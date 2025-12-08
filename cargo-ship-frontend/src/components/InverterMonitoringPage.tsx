@@ -3,13 +3,13 @@
 // 包含双逆变器（1#和2#）的完整监控功能，支持实时告警和历史数据分析
 // 主要监控指标：直流电压（高/低）、交流电流、电抗器温度、系统负载、转换效率
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertSummary } from './AlertSummary';            // 告警摘要组件
 import { UnifiedMonitoringChart, ChartType, MonitoringParameter } from './UnifiedMonitoringChart'; // 统一监测图表组件
 import { Checkbox } from './ui/checkbox';                  // 复选框UI组件
 import { Button } from './ui/button';                      // 按钮UI组件
 import { Card } from './ui/card';                          // 卡片UI组件
 import { useMonitoringStore } from '../stores/monitoring-store';   // 统一监测数据状态管理
-import { Zap, Thermometer, AlertTriangle, Activity } from 'lucide-react'; // 图标库
+import { Zap, Thermometer, AlertTriangle, Activity, Gauge, TrendingUp } from 'lucide-react'; // 图标库
+import { Badge } from './ui/badge';                    // 徽章UI组件
 import { UnifiedMonitoringData, MetricType, DataQuality, DataSource } from '../types/monitoring'; // 统一数据类型
 
 // 逆变器系统指标类型定义
@@ -503,10 +503,10 @@ export function InverterMonitoringPage() {
   const generateInitialChartData = () => {
     const now = Date.now();
     const data: UnifiedMonitoringData[] = [];
-    
+
     for (let i = 59; i >= 0; i--) {
       const timestamp = now - i * 3000;
-      
+
       // 1#逆变器数据
       data.push({
         id: `inv1_volt_high_${timestamp}`,
@@ -518,7 +518,7 @@ export function InverterMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `inv1_volt_low_${timestamp}`,
         equipmentId: 'INV-L-001',
@@ -529,7 +529,7 @@ export function InverterMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `inv1_current_${timestamp}`,
         equipmentId: 'INV-L-001',
@@ -540,7 +540,7 @@ export function InverterMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `inv1_temp_${timestamp}`,
         equipmentId: 'INV-L-001',
@@ -551,7 +551,7 @@ export function InverterMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       // 2#逆变器数据
       data.push({
         id: `inv2_volt_high_${timestamp}`,
@@ -563,7 +563,7 @@ export function InverterMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `inv2_volt_low_${timestamp}`,
         equipmentId: 'INV-R-001',
@@ -700,7 +700,7 @@ export function InverterMonitoringPage() {
         source: DataSource.SENSOR_UPLOAD
       }
     ];
-    
+
     setRealtimeChartData(prev => [...prev, ...newPoints].slice(-360)); // 保持最近60个时间点的数据（6个参数×60个时间点）
   }, [inverterMetrics]);
 
@@ -715,18 +715,18 @@ export function InverterMonitoringPage() {
       chartData: realtimeChartData,  // 实时图表数据点
       connectionStatus,              // 系统连接状态
     };
-    
+
     // 创建Blob对象并生成下载链接
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',      // 指定MIME类型为JSON
     });
-    
+
     const url = URL.createObjectURL(blob); // 创建对象URL
     const link = document.createElement('a'); // 创建下载链接
     link.href = url;
     link.download = `inverter-data-${new Date().toISOString().split('T')[0]}.json`; // 设置文件名
     link.click(); // 触发下载
-    
+
     // 清理：释放对象URL资源
     URL.revokeObjectURL(url);
   };
@@ -760,57 +760,267 @@ export function InverterMonitoringPage() {
           </div>
         </div>
 
-        {/* 逆变器系统状态概览 */}
-        <InverterOverview metrics={inverterMetrics} />
-
-        {/* 逆变器设备状态 */}
+        {/* 1#逆变器实时监控区域 - 带动态图标效果 */}
         <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <h3 className="text-slate-100 mb-4">逆变器设备状态</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {inverterDevices.map(device => (
-              <Card key={device.id} className={`
-                p-6 border-l-4
-                ${device.status === 'normal' ? 'border-green-500 bg-green-500/10' : ''}
-                ${device.status === 'warning' ? 'border-yellow-500 bg-yellow-500/10' : ''}
-                ${device.status === 'critical' ? 'border-red-500 bg-red-500/10' : ''}
-              `}>
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-slate-300 font-medium text-lg">{device.name}</h4>
-                  <div className={`
-                    w-3 h-3 rounded-full
-                    ${device.status === 'normal' ? 'bg-green-500' : ''}
-                    ${device.status === 'warning' ? 'bg-yellow-500' : ''}
-                    ${device.status === 'critical' ? 'bg-red-500' : ''}
-                  `} />
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
+              <Zap className="w-5 h-5 text-cyan-400 animate-pulse" />
+              1#逆变器实时监控
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${inverterMetrics.status === 'normal' ? 'bg-green-400' : inverterMetrics.status === 'warning' ? 'bg-yellow-400' : 'bg-red-400'} animate-pulse`} />
+              <span className="text-sm text-slate-400">实时更新中</span>
+            </div>
+          </div>
+
+          {/* 1#逆变器动态指标卡片 - 横向排列 */}
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+            {/* 直流电压 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-slate-400 text-sm">直流电压高</p>
-                    <p className="text-slate-100 text-lg font-semibold">{device.voltageHigh.toFixed(0)}V</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">直流电压低</p>
-                    <p className="text-slate-100 text-lg font-semibold">{device.voltageLow.toFixed(0)}V</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">电流</p>
-                    <p className="text-slate-100 text-lg font-semibold">{device.current.toFixed(0)}A</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">温度</p>
-                    <p className="text-slate-100 text-lg font-semibold">{device.temperature.toFixed(1)}°C</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">负载</p>
-                    <p className="text-slate-100 text-lg font-semibold">{device.load.toFixed(1)}%</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">效率</p>
-                    <p className="text-slate-100 text-lg font-semibold">{device.efficiency.toFixed(1)}%</p>
-                  </div>
+                <Badge className={`text-xs ${inverterMetrics.inv1VoltHigh > 760 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv1VoltHigh > 760 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-cyan-400 mb-1">
+                {inverterMetrics.inv1VoltHigh.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">V</span>
+              </div>
+              <div className="text-xs text-slate-400">直流电压</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-500"
+                  style={{ width: `${Math.min((inverterMetrics.inv1VoltHigh / 800) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 温度 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center animate-icon-glow">
+                  <Thermometer className="w-5 h-5 text-amber-400" />
                 </div>
-              </Card>
-            ))}
+                <Badge className={`text-xs ${inverterMetrics.inv1Temp > 65 ? 'bg-red-500/20 text-red-400' : inverterMetrics.inv1Temp > 60 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv1Temp > 65 ? '过热' : inverterMetrics.inv1Temp > 60 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-amber-400 mb-1">
+                {inverterMetrics.inv1Temp.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
+              </div>
+              <div className="text-xs text-slate-400">电抗器温度</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
+                  style={{ width: `${Math.min((inverterMetrics.inv1Temp / 70) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 负载 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <Gauge className="w-5 h-5 text-purple-400 animate-icon-wave" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv1Load > 100 ? 'bg-red-500/20 text-red-400' : inverterMetrics.inv1Load > 90 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv1Load > 100 ? '过载' : inverterMetrics.inv1Load > 90 ? '高负载' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-purple-400 mb-1">
+                {inverterMetrics.inv1Load.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+              </div>
+              <div className="text-xs text-slate-400">系统负载</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${inverterMetrics.inv1Load > 100 ? 'bg-gradient-to-r from-red-400 to-red-600' : inverterMetrics.inv1Load > 90 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-purple-400 to-purple-600'}`}
+                  style={{ width: `${Math.min(inverterMetrics.inv1Load, 120)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 电流 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-blue-400 animate-icon-ping" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv1Current > 190 ? 'bg-red-500/20 text-red-400' : inverterMetrics.inv1Current > 180 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv1Current > 190 ? '过流' : inverterMetrics.inv1Current > 180 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-blue-400 mb-1">
+                {inverterMetrics.inv1Current.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">A</span>
+              </div>
+              <div className="text-xs text-slate-400">输出电流</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
+                  style={{ width: `${Math.min((inverterMetrics.inv1Current / 200) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 效率 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-400 animate-icon-bounce" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv1Efficiency < 95 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv1Efficiency < 95 ? '偏低' : '优秀'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-green-400 mb-1">
+                {inverterMetrics.inv1Efficiency.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+              </div>
+              <div className="text-xs text-slate-400">转换效率</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500"
+                  style={{ width: `${inverterMetrics.inv1Efficiency}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* 2#逆变器实时监控区域 - 带动态图标效果 */}
+        <Card className="bg-slate-800/80 border-slate-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
+              <Zap className="w-5 h-5 text-cyan-400 animate-pulse" />
+              2#逆变器实时监控
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${inverterMetrics.status === 'normal' ? 'bg-green-400' : inverterMetrics.status === 'warning' ? 'bg-yellow-400' : 'bg-red-400'} animate-pulse`} />
+              <span className="text-sm text-slate-400">实时更新中</span>
+            </div>
+          </div>
+
+          {/* 2#逆变器动态指标卡片 - 横向排列（与1#逆变器保持一致） */}
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+            {/* 直流电压 - 与1#一致的青色 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv2VoltHigh > 760 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv2VoltHigh > 760 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-cyan-400 mb-1">
+                {inverterMetrics.inv2VoltHigh.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">V</span>
+              </div>
+              <div className="text-xs text-slate-400">直流电压</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-500"
+                  style={{ width: `${Math.min((inverterMetrics.inv2VoltHigh / 800) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 温度 - 与1#一致的琥珀色 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center animate-icon-glow">
+                  <Thermometer className="w-5 h-5 text-amber-400" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv2Temp > 65 ? 'bg-red-500/20 text-red-400' : inverterMetrics.inv2Temp > 60 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv2Temp > 65 ? '过热' : inverterMetrics.inv2Temp > 60 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-amber-400 mb-1">
+                {inverterMetrics.inv2Temp.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
+              </div>
+              <div className="text-xs text-slate-400">电抗器温度</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
+                  style={{ width: `${Math.min((inverterMetrics.inv2Temp / 70) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 负载 - 与1#一致的紫色 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <Gauge className="w-5 h-5 text-purple-400 animate-icon-wave" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv2Load > 100 ? 'bg-red-500/20 text-red-400' : inverterMetrics.inv2Load > 90 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv2Load > 100 ? '过载' : inverterMetrics.inv2Load > 90 ? '高负载' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-purple-400 mb-1">
+                {inverterMetrics.inv2Load.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+              </div>
+              <div className="text-xs text-slate-400">系统负载</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${inverterMetrics.inv2Load > 100 ? 'bg-gradient-to-r from-red-400 to-red-600' : inverterMetrics.inv2Load > 90 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-purple-400 to-purple-600'}`}
+                  style={{ width: `${Math.min(inverterMetrics.inv2Load, 120)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 电流 - 与1#一致的蓝色 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <Activity className="w-5 h-5 text-blue-400 animate-icon-ping" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv2Current > 190 ? 'bg-red-500/20 text-red-400' : inverterMetrics.inv2Current > 180 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv2Current > 190 ? '过流' : inverterMetrics.inv2Current > 180 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-blue-400 mb-1">
+                {inverterMetrics.inv2Current.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">A</span>
+              </div>
+              <div className="text-xs text-slate-400">输出电流</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
+                  style={{ width: `${Math.min((inverterMetrics.inv2Current / 200) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 转换效率 - 与1#一致的绿色 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-400 animate-icon-bounce" />
+                </div>
+                <Badge className={`text-xs ${inverterMetrics.inv2Efficiency < 95 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {inverterMetrics.inv2Efficiency < 95 ? '偏低' : '优秀'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-green-400 mb-1">
+                {inverterMetrics.inv2Efficiency.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+              </div>
+              <div className="text-xs text-slate-400">转换效率</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-green-400 to-green-600 transition-all duration-500"
+                  style={{ width: `${inverterMetrics.inv2Efficiency}%` }}
+                />
+              </div>
+            </div>
           </div>
         </Card>
 
@@ -857,92 +1067,77 @@ export function InverterMonitoringPage() {
           />
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Specifications Table */}
-          <div className="lg:col-span-2">
-            <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-6">
-              <h3 className="text-slate-100 mb-4">实时详细逆变器参数</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-700">
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">监测项目</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">单位</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">告警阈值</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">处理措施</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台显示</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台警告</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">就地显示</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">就地警告</th>
+        {/* Main Content - 实时详细逆变器参数表格（全宽） */}
+        <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-6">
+          <h3 className="text-slate-100 mb-4">实时详细逆变器参数</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-slate-700">
+                  <th className="text-left py-3 px-3 text-slate-300 text-sm">监测项目</th>
+                  <th className="text-left py-3 px-3 text-slate-300 text-sm">单位</th>
+                  <th className="text-left py-3 px-3 text-slate-300 text-sm">告警阈值</th>
+                  <th className="text-left py-3 px-3 text-slate-300 text-sm">处理措施</th>
+                  <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台显示</th>
+                  <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台警告</th>
+                  <th className="text-center py-3 px-3 text-slate-300 text-sm">就地显示</th>
+                  <th className="text-center py-3 px-3 text-slate-300 text-sm">就地警告</th>
+                </tr>
+              </thead>
+              <tbody>
+                {inverterSpecs.map((spec, index) => {
+                  // 检查当前值是否在告警范围
+                  const getCurrentValue = () => {
+                    switch (spec.item) {
+                      case '1#直流电压高': return inverterMetrics.inv1VoltHigh;
+                      case '1#直流电压低': return inverterMetrics.inv1VoltLow;
+                      case '1#逆变器过电流': return inverterMetrics.inv1Current;
+                      case '1#过载': return inverterMetrics.inv1Load;
+                      case '1#电抗器温度高': return inverterMetrics.inv1Temp;
+                      case '2#直流电压高': return inverterMetrics.inv2VoltHigh;
+                      case '2#直流电压低': return inverterMetrics.inv2VoltLow;
+                      case '2#逆变器过电流': return inverterMetrics.inv2Current;
+                      case '2#过载': return inverterMetrics.inv2Load;
+                      case '2#电抗器温度高': return inverterMetrics.inv2Temp;
+                      default: return 0;
+                    }
+                  };
+
+                  const currentValue = getCurrentValue();
+                  let isAlert = false;
+
+                  if ((spec.item.includes('1#电抗器温度高') && currentValue > 68) ||
+                    (spec.item.includes('2#电抗器温度高') && currentValue > 68)) {
+                    isAlert = true;
+                  }
+
+                  return (
+                    <tr
+                      key={index}
+                      className={`border-b border-slate-700/50 ${isAlert ? 'bg-amber-500/10' : 'hover:bg-slate-900/30'
+                        }`}
+                    >
+                      <td className="py-3 px-3 text-slate-300 text-sm">{spec.item}</td>
+                      <td className="py-3 px-3 text-slate-400 text-sm">{spec.unit}</td>
+                      <td className="py-3 px-3 text-amber-400 text-sm">{spec.threshold}</td>
+                      <td className="py-3 px-3 text-cyan-400 text-sm">{spec.action}</td>
+                      <td className="py-3 px-3 text-center">
+                        <Checkbox checked={spec.cockpitDisplay} disabled />
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <Checkbox checked={spec.cockpitWarning} disabled />
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <Checkbox checked={spec.localDisplay} disabled />
+                      </td>
+                      <td className="py-3 px-3 text-center">
+                        <Checkbox checked={spec.localWarning} disabled />
+                      </td>
                     </tr>
-                  </thead>
-                  <tbody>
-                    {inverterSpecs.map((spec, index) => {
-                      // 检查当前值是否在告警范围
-                      const getCurrentValue = () => {
-                        switch (spec.item) {
-                          case '1#直流电压高': return inverterMetrics.inv1VoltHigh;
-                          case '1#直流电压低': return inverterMetrics.inv1VoltLow;
-                          case '1#逆变器过电流': return inverterMetrics.inv1Current;
-                          case '1#过载': return inverterMetrics.inv1Load;
-                          case '1#电抗器温度高': return inverterMetrics.inv1Temp;
-                          case '2#直流电压高': return inverterMetrics.inv2VoltHigh;
-                          case '2#直流电压低': return inverterMetrics.inv2VoltLow;
-                          case '2#逆变器过电流': return inverterMetrics.inv2Current;
-                          case '2#过载': return inverterMetrics.inv2Load;
-                          case '2#电抗器温度高': return inverterMetrics.inv2Temp;
-                          default: return 0;
-                        }
-                      };
-
-                      const currentValue = getCurrentValue();
-                      let isAlert = false;
-                      
-                      if ((spec.item.includes('1#电抗器温度高') && currentValue > 68) ||
-                          (spec.item.includes('2#电抗器温度高') && currentValue > 68)) {
-                        isAlert = true;
-                      }
-
-                      return (
-                        <tr
-                          key={index}
-                          className={`border-b border-slate-700/50 ${
-                            isAlert ? 'bg-amber-500/10' : 'hover:bg-slate-900/30'
-                          }`}
-                        >
-                          <td className="py-3 px-3 text-slate-300 text-sm">{spec.item}</td>
-                          <td className="py-3 px-3 text-slate-400 text-sm">{spec.unit}</td>
-                          <td className="py-3 px-3 text-amber-400 text-sm">{spec.threshold}</td>
-                          <td className="py-3 px-3 text-cyan-400 text-sm">{spec.action}</td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.cockpitDisplay} disabled />
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.cockpitWarning} disabled />
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.localDisplay} disabled />
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.localWarning} disabled />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          {/* Alert Summary Sidebar */}
-          <div className="lg:col-span-1">
-            <AlertSummary
-              title="逆变器系统告警"
-              equipmentId="inverter-system"
-              equipmentName="逆变器系统"
-            />
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

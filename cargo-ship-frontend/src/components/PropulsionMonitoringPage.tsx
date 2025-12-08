@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { AlertSummary } from './AlertSummary';
 import { UnifiedMonitoringChart, ChartType, MonitoringParameter } from './UnifiedMonitoringChart';
 import { Checkbox } from './ui/checkbox';
 import { Button } from './ui/button';
 import { Card } from './ui/card';
+import { Badge } from './ui/badge';
 import { ImportStatusIndicator } from './ImportStatusIndicator';
 import { ReportGenerator } from './ui/report-generator';
 import { useMonitoringStore } from '../stores/monitoring-store';
-import { Shield, Zap, Activity, Gauge } from 'lucide-react';
+import { Shield, Zap, Activity, Gauge, Thermometer, TrendingUp, RotateCw, Radio } from 'lucide-react';
 import { UnifiedMonitoringData, MetricType, DataQuality, DataSource } from '../types/monitoring';
 
 // 推进系统核心指标类型定义
@@ -453,7 +453,7 @@ export function PropulsionMonitoringPage() {
       try {
         // 订阅推进系统的实时数据
         await subscribeToRealtime(['MOTOR-L-001', 'MOTOR-R-001'], ['voltage', 'speed', 'temperature', 'frequency']);
-        
+
         // 获取历史数据
         await fetchMonitoringData({
           equipmentId: 'MOTOR-L-001',
@@ -495,10 +495,10 @@ export function PropulsionMonitoringPage() {
   const generateInitialChartData = () => {
     const now = Date.now();
     const data: UnifiedMonitoringData[] = [];
-    
+
     for (let i = 59; i >= 0; i--) {
       const timestamp = now - i * 2500;
-      
+
       // 左电机数据
       data.push({
         id: `left_voltage_${timestamp}`,
@@ -510,7 +510,7 @@ export function PropulsionMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `right_voltage_${timestamp}`,
         equipmentId: 'MOTOR-R-001',
@@ -521,7 +521,7 @@ export function PropulsionMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `left_rpm_${timestamp}`,
         equipmentId: 'MOTOR-L-001',
@@ -532,7 +532,7 @@ export function PropulsionMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `right_rpm_${timestamp}`,
         equipmentId: 'MOTOR-R-001',
@@ -543,7 +543,7 @@ export function PropulsionMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `left_temp_${timestamp}`,
         equipmentId: 'MOTOR-L-001',
@@ -554,7 +554,7 @@ export function PropulsionMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `right_temp_${timestamp}`,
         equipmentId: 'MOTOR-R-001',
@@ -688,7 +688,7 @@ export function PropulsionMonitoringPage() {
         source: DataSource.SENSOR_UPLOAD
       }
     ];
-    
+
     setRealtimeChartData(prev => [...prev, ...newPoints].slice(-288)); // 保持最近48个时间点的数据（6个参数×48个时间点）
   }, [propulsionMetrics]);
 
@@ -703,18 +703,18 @@ export function PropulsionMonitoringPage() {
       chartData: realtimeChartData,  // 实时图表数据点
       connectionStatus,              // 系统连接状态
     };
-    
+
     // 创建Blob对象并生成下载链接
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',      // 指定MIME类型为JSON
     });
-    
+
     const url = URL.createObjectURL(blob); // 创建对象URL
     const link = document.createElement('a'); // 创建下载链接
     link.href = url;
     link.download = `propulsion-data-${new Date().toISOString().split('T')[0]}.json`; // 设置文件名
     link.click(); // 触发下载
-    
+
     // 清理：释放对象URL资源
     URL.revokeObjectURL(url);
   };
@@ -760,53 +760,263 @@ export function PropulsionMonitoringPage() {
           </div>
         </div>
 
-        {/* 推进系统状态概览 */}
-        <PropulsionOverview metrics={propulsionMetrics} />
-
-        {/* 推进电机状态 */}
+        {/* 左推进电机实时监控 */}
         <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <h3 className="text-slate-100 mb-4">推进电机状态</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {propulsionMotors.map(motor => (
-              <Card key={motor.id} className={`
-                p-6 border-l-4
-                ${motor.status === 'normal' ? 'border-green-500 bg-green-500/10' : ''}
-                ${motor.status === 'warning' ? 'border-yellow-500 bg-yellow-500/10' : ''}
-                ${motor.status === 'critical' ? 'border-red-500 bg-red-500/10' : ''}
-              `}>
-                <div className="flex items-center justify-between mb-4">
-                  <h4 className="text-slate-300 font-medium text-lg">{motor.name}</h4>
-                  <div className={`
-                    w-3 h-3 rounded-full
-                    ${motor.status === 'normal' ? 'bg-green-500' : ''}
-                    ${motor.status === 'warning' ? 'bg-yellow-500' : ''}
-                    ${motor.status === 'critical' ? 'bg-red-500' : ''}
-                  `} />
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-cyan-400"></div>
+              左推进电机实时监控
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-sm text-slate-400">实时更新中</span>
+            </div>
+          </div>
+
+          {/* 左推进电机指标卡片 - 5个指标横向排列 */}
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+            {/* 电压 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-slate-400 text-sm">电压</p>
-                    <p className="text-slate-100 text-lg font-semibold">{motor.voltage.toFixed(1)}V</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">转速</p>
-                    <p className="text-slate-100 text-lg font-semibold">{Math.round(motor.rpm)}RPM</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">温度</p>
-                    <p className="text-slate-100 text-lg font-semibold">{motor.temperature.toFixed(1)}°C</p>
-                  </div>
-                  <div>
-                    <p className="text-slate-400 text-sm">频率</p>
-                    <p className="text-slate-100 text-lg font-semibold">{motor.frequency.toFixed(1)}Hz</p>
-                  </div>
-                  <div className="col-span-2">
-                    <p className="text-slate-400 text-sm">效率</p>
-                    <p className="text-slate-100 text-lg font-semibold">{motor.efficiency.toFixed(1)}%</p>
-                  </div>
+                <Badge className={`text-xs ${propulsionMetrics.leftVoltage > 400 ? 'bg-yellow-500/20 text-yellow-400' : propulsionMetrics.leftVoltage < 350 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.leftVoltage > 400 ? '偏高' : propulsionMetrics.leftVoltage < 350 ? '偏低' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-cyan-400 mb-1">
+                {propulsionMetrics.leftVoltage.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">V</span>
+              </div>
+              <div className="text-xs text-slate-400">电压</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.leftVoltage / 420) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 温度 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center animate-icon-glow">
+                  <Thermometer className="w-5 h-5 text-amber-400" />
                 </div>
-              </Card>
-            ))}
+                <Badge className={`text-xs ${propulsionMetrics.leftTemp > 75 ? 'bg-red-500/20 text-red-400' : propulsionMetrics.leftTemp > 65 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.leftTemp > 75 ? '过热' : propulsionMetrics.leftTemp > 65 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-amber-400 mb-1">
+                {propulsionMetrics.leftTemp.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
+              </div>
+              <div className="text-xs text-slate-400">温度</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.leftTemp / 80) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 转速 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <RotateCw className="w-5 h-5 text-purple-400 animate-slow-spin" />
+                </div>
+                <Badge className={`text-xs ${propulsionMetrics.leftRpm > 1700 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.leftRpm > 1700 ? '高速' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-purple-400 mb-1">
+                {Math.round(propulsionMetrics.leftRpm)}
+                <span className="text-sm font-normal text-slate-400 ml-1">RPM</span>
+              </div>
+              <div className="text-xs text-slate-400">转速</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.leftRpm / 2000) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 频率 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <Radio className="w-5 h-5 text-blue-400 animate-icon-ping" />
+                </div>
+                <Badge className="text-xs bg-green-500/20 text-green-400">正常</Badge>
+              </div>
+              <div className="text-2xl font-bold text-blue-400 mb-1">
+                {propulsionMetrics.leftFreq.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">Hz</span>
+              </div>
+              <div className="text-xs text-slate-400">频率</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.leftFreq / 60) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 效率 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-400 animate-icon-bounce" />
+                </div>
+                <Badge className={`text-xs ${propulsionMetrics.efficiency < 90 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.efficiency < 90 ? '偏低' : '良好'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-green-400 mb-1">
+                {propulsionMetrics.efficiency.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+              </div>
+              <div className="text-xs text-slate-400">效率</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${propulsionMetrics.efficiency < 90 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-green-400 to-green-600'}`}
+                  style={{ width: `${propulsionMetrics.efficiency}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* 右推进电机实时监控 */}
+        <Card className="bg-slate-800/80 border-slate-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
+              <div className="w-3 h-3 rounded-full bg-purple-400"></div>
+              右推进电机实时监控
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <span className="text-sm text-slate-400">实时更新中</span>
+            </div>
+          </div>
+
+          {/* 右推进电机指标卡片 - 5个指标横向排列 */}
+          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
+            {/* 电压 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Zap className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${propulsionMetrics.rightVoltage > 400 ? 'bg-yellow-500/20 text-yellow-400' : propulsionMetrics.rightVoltage < 350 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.rightVoltage > 400 ? '偏高' : propulsionMetrics.rightVoltage < 350 ? '偏低' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-cyan-400 mb-1">
+                {propulsionMetrics.rightVoltage.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">V</span>
+              </div>
+              <div className="text-xs text-slate-400">电压</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.rightVoltage / 420) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 温度 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center animate-icon-glow">
+                  <Thermometer className="w-5 h-5 text-amber-400" />
+                </div>
+                <Badge className={`text-xs ${propulsionMetrics.rightTemp > 75 ? 'bg-red-500/20 text-red-400' : propulsionMetrics.rightTemp > 65 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.rightTemp > 75 ? '过热' : propulsionMetrics.rightTemp > 65 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-amber-400 mb-1">
+                {propulsionMetrics.rightTemp.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
+              </div>
+              <div className="text-xs text-slate-400">温度</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.rightTemp / 80) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 转速 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <RotateCw className="w-5 h-5 text-purple-400 animate-slow-spin" />
+                </div>
+                <Badge className={`text-xs ${propulsionMetrics.rightRpm > 1700 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.rightRpm > 1700 ? '高速' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-purple-400 mb-1">
+                {Math.round(propulsionMetrics.rightRpm)}
+                <span className="text-sm font-normal text-slate-400 ml-1">RPM</span>
+              </div>
+              <div className="text-xs text-slate-400">转速</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.rightRpm / 2000) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 频率 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <Radio className="w-5 h-5 text-blue-400 animate-icon-ping" />
+                </div>
+                <Badge className="text-xs bg-green-500/20 text-green-400">正常</Badge>
+              </div>
+              <div className="text-2xl font-bold text-blue-400 mb-1">
+                {propulsionMetrics.rightFreq.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">Hz</span>
+              </div>
+              <div className="text-xs text-slate-400">频率</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
+                  style={{ width: `${Math.min((propulsionMetrics.rightFreq / 60) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 效率 */}
+            <div style={{ flex: 1 }} className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <TrendingUp className="w-5 h-5 text-green-400 animate-icon-bounce" />
+                </div>
+                <Badge className={`text-xs ${propulsionMetrics.efficiency < 90 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {propulsionMetrics.efficiency < 90 ? '偏低' : '良好'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-green-400 mb-1">
+                {propulsionMetrics.efficiency.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
+              </div>
+              <div className="text-xs text-slate-400">效率</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${propulsionMetrics.efficiency < 90 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-green-400 to-green-600'}`}
+                  style={{ width: `${propulsionMetrics.efficiency}%` }}
+                />
+              </div>
+            </div>
           </div>
         </Card>
 
@@ -854,9 +1064,9 @@ export function PropulsionMonitoringPage() {
         </div>
 
         {/* Main Content Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6">
           {/* Specifications Table */}
-          <div className="lg:col-span-2">
+          <div>
             <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-6">
               <h3 className="text-slate-100 mb-4">实时详细推进参数</h3>
               <div className="overflow-x-auto">
@@ -890,18 +1100,17 @@ export function PropulsionMonitoringPage() {
 
                       const currentValue = getCurrentValue();
                       let isAlert = false;
-                      
+
                       if ((spec.item.includes('左电机温度') && currentValue > 75) ||
-                          (spec.item.includes('右电机温度') && currentValue > 75)) {
+                        (spec.item.includes('右电机温度') && currentValue > 75)) {
                         isAlert = true;
                       }
 
                       return (
                         <tr
                           key={index}
-                          className={`border-b border-slate-700/50 ${
-                            isAlert ? 'bg-amber-500/10' : 'hover:bg-slate-900/30'
-                          }`}
+                          className={`border-b border-slate-700/50 ${isAlert ? 'bg-amber-500/10' : 'hover:bg-slate-900/30'
+                            }`}
                         >
                           <td className="py-3 px-3 text-slate-300 text-sm">{spec.item}</td>
                           <td className="py-3 px-3 text-slate-400 text-sm">{spec.unit}</td>
@@ -926,15 +1135,6 @@ export function PropulsionMonitoringPage() {
                 </table>
               </div>
             </div>
-          </div>
-
-          {/* Alert Summary Sidebar */}
-          <div className="lg:col-span-1">
-            <AlertSummary
-              title="推进系统告警"
-              equipmentId="propulsion-system"
-              equipmentName="推进系统"
-            />
           </div>
         </div>
       </div>

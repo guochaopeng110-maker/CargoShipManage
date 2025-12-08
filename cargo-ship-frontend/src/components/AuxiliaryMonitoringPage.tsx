@@ -32,16 +32,20 @@ import { Button } from './ui/button';   // 按钮组件
 // 状态管理和功能组件导入
 import { useMonitoringStore } from '../stores/monitoring-store';   // 统一监测数据状态管理
 import { UnifiedMonitoringChart, ChartType, MonitoringParameter } from './UnifiedMonitoringChart'; // 统一监测图表组件
-import { AlertSummary } from './AlertSummary';             // 告警摘要组件
 
 // 图标组件导入（来自Lucide React图标库）
 import {
   Waves,          // 水波图标 - 用于表示液体流动
   Thermometer,    // 温度计图标 - 用于表示温度
-  AlertTriangle,  // 警告三角形图标 - 用于表示告警
   Droplets,       // 水滴图标 - 用于表示水位
-  Settings        // 设置图标 - 用于表示系统设置
+  Settings,       // 设置图标 - 用于表示系统设置
+  Gauge,          // 仪表盘图标 - 用于表示压力
+  Power,          // 电源图标 - 用于表示电源状态
+  Anchor          // 锚点图标 - 用于舱底标识
 } from 'lucide-react';
+
+// UI组件导入
+import { Badge } from './ui/badge';       // 徽章组件
 
 // 统一数据类型导入
 import { UnifiedMonitoringData, MetricType, DataQuality, DataSource } from '../types/monitoring'; // 统一数据类型
@@ -50,32 +54,41 @@ import { UnifiedMonitoringData, MetricType, DataQuality, DataSource } from '../t
  * 辅助系统指标数据类型定义
  * 
  * 描述：定义了辅助系统所有关键参数的监控数据结构
+ * 包含舱底水系统和冷却水泵系统的监测点
  * 
- * 监控参数说明：
- * - bilgeWaterLevel: 舱底水液位 (0-1范围的百分比)
- * - bilgeWaterTemp: 舱底水温度 (摄氏度)
- * - oilSeparatorStatus: 油水分离器运行状态
- * - bilgePumpStatus: 舱底水泵运行状态
- * - coolingWaterPressure: 冷却水系统压力 (kPa)
- * - coolingWaterTemp: 冷却水温度 (摄氏度)
- * - coolingWaterFlow: 冷却水流量 (L/min)
- * - coolingPumpStatus: 冷却水泵运行状态
- * - heatExchangerEfficiency: 热交换器效率 (百分比)
+ * 舱底水系统监测点：
+ * - well1WaterLevel: 1#集水井水位 (mm)
+ * - well2WaterLevel: 2#集水井水位 (mm)
+ * - well3WaterLevel: 3#集水井水位 (mm)
+ * - well4WaterLevel: 4#集水井水位 (mm)
+ * 
+ * 冷却水泵系统监测点：
+ * - pump1PowerStatus: 1#冷却水泵电源状态 (0正常/1失电)
+ * - pump1WaterTemp: 1#冷却水温 (°C)
+ * - pump2PowerStatus: 2#冷却水泵电源状态 (0正常/1失电)
+ * - pump2WaterTemp: 2#冷却水温 (°C)
+ * - coolingWaterPressure: 冷却水压力 (MPa)
+ * 
  * - systemStatus: 整体系统状态
  * - lastUpdate: 最后更新时间戳
  */
 interface AuxiliaryMetrics {
-  bilgeWaterLevel: number;                    // 舱底水液位 (0-1)
-  bilgeWaterTemp: number;                     // 舱底水温度 (°C)
-  oilSeparatorStatus: 'normal' | 'warning' | 'fault';  // 油水分离器状态
-  bilgePumpStatus: 'normal' | 'warning' | 'fault';     // 舱底水泵状态
-  coolingWaterPressure: number;               // 冷却水压力 (kPa)
-  coolingWaterTemp: number;                   // 冷却水温度 (°C)
-  coolingWaterFlow: number;                   // 冷却水流量 (L/min)
-  coolingPumpStatus: 'normal' | 'warning' | 'fault';   // 冷却水泵状态
-  heatExchangerEfficiency: number;           // 热交换器效率 (%)
-  systemStatus: 'normal' | 'warning' | 'critical';     // 系统整体状态
-  lastUpdate: number;                        // 最后更新时间戳
+  // 舱底水系统监测点
+  well1WaterLevel: number;        // 1#集水井水位 (mm)
+  well2WaterLevel: number;        // 2#集水井水位 (mm)
+  well3WaterLevel: number;        // 3#集水井水位 (mm)
+  well4WaterLevel: number;        // 4#集水井水位 (mm)
+
+  // 冷却水泵系统监测点
+  pump1PowerStatus: number;       // 1#冷却水泵电源状态 (0正常/1失电)
+  pump1WaterTemp: number;         // 1#冷却水温 (°C)
+  pump2PowerStatus: number;       // 2#冷却水泵电源状态 (0正常/1失电)
+  pump2WaterTemp: number;         // 2#冷却水温 (°C)
+  coolingWaterPressure: number;   // 冷却水压力 (MPa)
+
+  // 系统状态
+  systemStatus: 'normal' | 'warning' | 'critical';  // 系统整体状态
+  lastUpdate: number;             // 最后更新时间戳
 }
 
 /**
@@ -116,19 +129,19 @@ interface AuxiliaryDevice {
 const AuxiliaryConnectionStatus = ({ status }: { status: 'connected' | 'disconnected' | 'connecting' }) => {
   // 连接状态配置映射
   const statusConfig = {
-    connected: { 
+    connected: {
       color: 'text-green-400',    // 绿色文字
       bg: 'bg-green-500/20',      // 绿色背景
       text: '已连接',             // 显示文本
       icon: '🟢'                  // 绿色圆点图标
     },
-    connecting: { 
+    connecting: {
       color: 'text-yellow-400',   // 黄色文字
       bg: 'bg-yellow-500/20',     // 黄色背景
       text: '连接中',             // 显示文本
       icon: '🟡'                  // 黄色圆点图标
     },
-    disconnected: { 
+    disconnected: {
       color: 'text-red-400',      // 红色文字
       bg: 'bg-red-500/20',        // 红色背景
       text: '断开连接',           // 显示文本
@@ -149,210 +162,7 @@ const AuxiliaryConnectionStatus = ({ status }: { status: 'connected' | 'disconne
   );
 };
 
-/**
- * 辅助系统概览组件
- * 
- * 功能说明：
- * - 以卡片网格形式展示辅助系统关键指标
- * - 每个指标卡片包含图标、数值和单位
- * - 根据系统状态动态调整显示样式
- * 
- * 监控指标：
- * 1. 舱底水液位 (百分比)
- * 2. 舱底水温度 (摄氏度)
- * 3. 冷却水压力 (kPa)
- * 4. 冷却水温度 (摄氏度)
- * 5. 冷却水流量 (L/min)
- * 6. 系统整体状态
- * 
- * @param metrics 辅助系统指标数据
- */
-const AuxiliaryOverview = ({ metrics }: { metrics: AuxiliaryMetrics }) => {
-  /**
-   * 根据状态获取对应颜色
-   * @param status 系统状态
-   * @returns CSS颜色类名
-   */
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'normal': return 'text-green-400';    // 正常 - 绿色
-      case 'warning': return 'text-yellow-400';  // 警告 - 黄色
-      case 'critical': return 'text-red-400';    // 严重 - 红色
-      case 'fault': return 'text-red-500';       // 故障 - 深红色
-      default: return 'text-slate-400';          // 默认 - 灰色
-    }
-  };
 
-  /**
-   * 根据状态获取对应背景色
-   * @param status 系统状态
-   * @returns CSS背景色类名
-   */
-  const getStatusBg = (status: string) => {
-    switch (status) {
-      case 'normal': return 'bg-green-500/20';     // 正常 - 绿色背景
-      case 'warning': return 'bg-yellow-500/20';   // 警告 - 黄色背景
-      case 'critical': return 'bg-red-500/20';     // 严重 - 红色背景
-      case 'fault': return 'bg-red-600/20';        // 故障 - 深红色背景
-      default: return 'bg-slate-500/20';           // 默认 - 灰色背景
-    }
-  };
-
-  return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-      {/* 舱底水液位监控卡片 */}
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Droplets className="w-8 h-8 text-blue-400" />
-          <div>
-            <p className="text-slate-400 text-sm">舱底水位</p>
-            <p className="text-slate-100 text-xl font-bold">
-              {(metrics.bilgeWaterLevel * 100).toFixed(0)}%  {/* 转换为百分比显示 */}
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* 舱底水温度监控卡片 */}
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Thermometer className="w-8 h-8 text-orange-400" />
-          <div>
-            <p className="text-slate-400 text-sm">舱底水温度</p>
-            <p className="text-slate-100 text-xl font-bold">
-              {metrics.bilgeWaterTemp.toFixed(1)}°C
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* 冷却水压力监控卡片 */}
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Settings className="w-8 h-8 text-cyan-400" />
-          <div>
-            <p className="text-slate-400 text-sm">冷却水压力</p>
-            <p className="text-slate-100 text-xl font-bold">
-              {metrics.coolingWaterPressure.toFixed(0)}kPa
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* 冷却水温度监控卡片 */}
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Thermometer className="w-8 h-8 text-orange-400" />
-          <div>
-            <p className="text-slate-400 text-sm">冷却水温度</p>
-            <p className="text-slate-100 text-xl font-bold">
-              {metrics.coolingWaterTemp.toFixed(1)}°C
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* 冷却水流量监控卡片 */}
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Waves className="w-8 h-8 text-green-400" />
-          <div>
-            <p className="text-slate-400 text-sm">冷却水流量</p>
-            <p className="text-slate-100 text-xl font-bold">
-              {metrics.coolingWaterFlow.toFixed(0)}L/min
-            </p>
-          </div>
-        </div>
-      </Card>
-
-      {/* 系统状态监控卡片 */}
-      <Card className={`bg-slate-800/60 border-slate-700 p-4 ${getStatusBg(metrics.systemStatus)}`}>
-        <div className="flex items-center gap-3">
-          <AlertTriangle className={`w-8 h-8 ${getStatusColor(metrics.systemStatus)}`} />
-          <div>
-            <p className="text-slate-400 text-sm">系统状态</p>
-            <p className={`text-xl font-bold ${getStatusColor(metrics.systemStatus)}`}>
-              {metrics.systemStatus === 'normal' ? '正常' :
-               metrics.systemStatus === 'warning' ? '警告' : '严重'}
-            </p>
-          </div>
-        </div>
-      </Card>
-    </div>
-  );
-};
-
-/**
- * 设备状态卡片组件
- * 
- * 功能说明：
- * - 以卡片形式展示单个设备的详细信息
- * - 显示设备名称、状态指示器和运行参数
- * - 根据设备状态使用不同的边框颜色和背景
- * 
- * 显示内容：
- * - 设备名称和状态指示灯
- * - 运行参数列表（流量、压力、温度等）
- * 
- * @param device 设备数据
- */
-const DeviceStatusCard = ({ device }: { device: AuxiliaryDevice }) => {
-  /**
-   * 根据状态获取文字颜色
-   * @param status 设备状态
-   * @returns CSS颜色类名
-   */
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'normal': return 'text-green-400';    // 正常 - 绿色
-      case 'warning': return 'text-yellow-400';  // 警告 - 黄色
-      case 'fault': return 'text-red-500';       // 故障 - 红色
-      default: return 'text-slate-400';          // 默认 - 灰色
-    }
-  };
-
-  /**
-   * 根据状态获取边框和背景样式
-   * @param status 设备状态
-   * @returns CSS样式类名
-   */
-  const getStatusBg = (status: string) => {
-    switch (status) {
-      case 'normal': return 'border-green-500 bg-green-500/10';     // 正常 - 绿色边框背景
-      case 'warning': return 'border-yellow-500 bg-yellow-500/10';   // 警告 - 黄色边框背景
-      case 'fault': return 'border-red-500 bg-red-500/10';           // 故障 - 红色边框背景
-      default: return 'border-slate-500 bg-slate-500/10';           // 默认 - 灰色边框背景
-    }
-  };
-
-  return (
-    <Card className={`p-6 border-l-4 ${getStatusBg(device.status)}`}>
-      {/* 设备名称和状态指示器 */}
-      <div className="flex items-center justify-between mb-4">
-        <h4 className="text-slate-300 font-medium text-lg">{device.name}</h4>
-        {/* 状态指示灯 */}
-        <div className={`
-          w-3 h-3 rounded-full
-          ${device.status === 'normal' ? 'bg-green-500' : ''}
-          ${device.status === 'warning' ? 'bg-yellow-500' : ''}
-          ${device.status === 'fault' ? 'bg-red-500' : ''}
-        `} />
-      </div>
-      
-      {/* 设备参数网格 */}
-      <div className="grid grid-cols-2 gap-3 text-sm">
-        {Object.entries(device.parameters).map(([key, value]) => (
-          <div key={key}>
-            <p className="text-slate-400">{key}</p>
-            <p className="text-slate-100 font-medium">
-              {typeof value === 'number' ? value.toFixed(1) : value}
-            </p>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-};
 
 /**
  * 舱底水告警系统配置数据
@@ -519,15 +329,20 @@ export function AuxiliaryMonitoringPage() {
 
   // 辅助系统指标状态管理
   const [auxiliaryMetrics, setAuxiliaryMetrics] = useState<AuxiliaryMetrics>({
-    bilgeWaterLevel: 0.35,        // 初始舱底水液位 35%
-    bilgeWaterTemp: 28.5,         // 初始舱底水温度 28.5°C
-    oilSeparatorStatus: 'normal', // 油水分离器初始状态
-    bilgePumpStatus: 'normal',    // 舱底水泵初始状态
-    coolingWaterPressure: 185,    // 初始冷却水压力 185kPa
-    coolingWaterTemp: 38.2,       // 初始冷却水温度 38.2°C
-    coolingWaterFlow: 95,         // 初始冷却水流量 95L/min
-    coolingPumpStatus: 'normal',  // 冷却水泵初始状态
-    heatExchangerEfficiency: 85.7, // 初始热交换器效率 85.7%
+    // 舱底水系统监测点 (阈值: 200mm)
+    well1WaterLevel: 85,          // 1#集水井水位 85mm
+    well2WaterLevel: 92,          // 2#集水井水位 92mm
+    well3WaterLevel: 78,          // 3#集水井水位 78mm
+    well4WaterLevel: 105,         // 4#集水井水位 105mm
+
+    // 冷却水泵系统监测点
+    pump1PowerStatus: 0,          // 1#冷却水泵电源状态 (0正常)
+    pump1WaterTemp: 28.5,         // 1#冷却水温 28.5°C (阈值: 33°C)
+    pump2PowerStatus: 0,          // 2#冷却水泵电源状态 (0正常)
+    pump2WaterTemp: 29.2,         // 2#冷却水温 29.2°C (阈值: 33°C)
+    coolingWaterPressure: 0.25,   // 冷却水压力 0.25MPa (阈值: <0.1MPa)
+
+    // 系统状态
     systemStatus: 'normal',       // 系统初始状态
     lastUpdate: Date.now(),       // 初始更新时间
   });
@@ -648,11 +463,11 @@ export function AuxiliaryMonitoringPage() {
   const generateInitialChartData = () => {
     const now = Date.now();
     const data: UnifiedMonitoringData[] = [];
-    
+
     // 生成60个历史数据点
     for (let i = 59; i >= 0; i--) {
       const timestamp = now - i * 3500; // 每3.5秒一个数据点
-      
+
       // 舱底水系统数据
       data.push({
         id: `bilge_water_level_${timestamp}`,
@@ -664,7 +479,7 @@ export function AuxiliaryMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `bilge_water_temp_${timestamp}`,
         equipmentId: 'WELL-001',
@@ -675,7 +490,7 @@ export function AuxiliaryMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       // 冷却水系统数据
       data.push({
         id: `cooling_water_pressure_${timestamp}`,
@@ -687,7 +502,7 @@ export function AuxiliaryMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `cooling_water_temp_${timestamp}`,
         equipmentId: 'PUMP-COOL-001',
@@ -698,7 +513,7 @@ export function AuxiliaryMonitoringPage() {
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       });
-      
+
       data.push({
         id: `cooling_water_flow_${timestamp}`,
         equipmentId: 'PUMP-COOL-001',
@@ -731,60 +546,61 @@ export function AuxiliaryMonitoringPage() {
   const updateAuxiliaryMetrics = useCallback(() => {
     setAuxiliaryMetrics(prev => {
       /**
-       * 生成随机波动的基础指标值
-       * 使用数学函数确保值在合理范围内
+       * 生成随机波动的舱底水系统指标值
+       * 水位在50-180mm范围内波动（阈值200mm）
        */
-      const bilgeWaterLevel = Math.max(0, Math.min(1, prev.bilgeWaterLevel + (Math.random() - 0.5) * 0.05));
-      const bilgeWaterTemp = Math.max(0, 25 + Math.random() * 10);
-      const coolingWaterPressure = Math.max(0, 180 + Math.random() * 20);
-      const coolingWaterTemp = Math.max(0, 35 + Math.random() * 10);
-      const coolingWaterFlow = Math.max(0, 90 + Math.random() * 20);
-      const heatExchangerEfficiency = Math.max(0, Math.min(100, 85 + (Math.random() - 0.5) * 5));
+      const well1WaterLevel = Math.max(30, Math.min(190, prev.well1WaterLevel + (Math.random() - 0.5) * 15));
+      const well2WaterLevel = Math.max(30, Math.min(190, prev.well2WaterLevel + (Math.random() - 0.5) * 15));
+      const well3WaterLevel = Math.max(30, Math.min(190, prev.well3WaterLevel + (Math.random() - 0.5) * 15));
+      const well4WaterLevel = Math.max(30, Math.min(190, prev.well4WaterLevel + (Math.random() - 0.5) * 15));
 
       /**
-       * 随机设备状态更新
-       * 模拟设备偶尔出现的异常状态
-       *
-       * 状态概率设置：
-       * - normal: 92-98% 正常
-       * - warning: 2-5% 警告
-       * - fault: 2-3% 故障
+       * 生成随机波动的冷却水泵系统指标值
        */
-      const oilSeparatorStatus: 'normal' | 'warning' | 'fault' =
-        Math.random() > 0.95 ? 'warning' :    // 5% 警告
-        Math.random() > 0.98 ? 'fault' : 'normal'; // 2% 故障
-      const bilgePumpStatus: 'normal' | 'warning' | 'fault' =
-        Math.random() > 0.92 ? 'warning' :      // 8% 警告
-        Math.random() > 0.97 ? 'fault' : 'normal';   // 3% 故障
-      const coolingPumpStatus: 'normal' | 'warning' | 'fault' =
-        Math.random() > 0.94 ? 'warning' :    // 6% 警告
-        Math.random() > 0.98 ? 'fault' : 'normal'; // 2% 故障
+      // 电源状态：2%概率失电
+      const pump1PowerStatus = Math.random() > 0.98 ? 1 : 0;
+      const pump2PowerStatus = Math.random() > 0.98 ? 1 : 0;
+
+      // 水温在25-35°C范围内波动（阈值33°C）
+      const pump1WaterTemp = Math.max(20, Math.min(36, prev.pump1WaterTemp + (Math.random() - 0.5) * 2));
+      const pump2WaterTemp = Math.max(20, Math.min(36, prev.pump2WaterTemp + (Math.random() - 0.5) * 2));
+
+      // 压力在0.15-0.35MPa范围内波动（阈值<0.1MPa为低）
+      const coolingWaterPressure = Math.max(0.08, Math.min(0.4, prev.coolingWaterPressure + (Math.random() - 0.5) * 0.05));
 
       /**
        * 检查和更新系统整体状态
-       * 故障设备数量决定系统状态级别：
-       * - critical: 有任何故障设备
-       * - warning: 有任何警告设备但无故障
-       * - normal: 所有设备正常
+       * 根据各监测点是否超阈值判断系统状态
        */
       let systemStatus: 'normal' | 'warning' | 'critical' = 'normal';
-      if (oilSeparatorStatus === 'fault' || bilgePumpStatus === 'fault' || coolingPumpStatus === 'fault') {
-        systemStatus = 'critical';  // 任何故障都导致严重状态
-      } else if (oilSeparatorStatus === 'warning' || bilgePumpStatus === 'warning' || coolingPumpStatus === 'warning') {
-        systemStatus = 'warning';   // 有警告但无故障
+
+      // 检查水位是否超过阈值
+      const waterLevelAlert = well1WaterLevel > 200 || well2WaterLevel > 200 ||
+        well3WaterLevel > 200 || well4WaterLevel > 200;
+      // 检查水泵是否失电
+      const pumpPowerAlert = pump1PowerStatus === 1 || pump2PowerStatus === 1;
+      // 检查水温是否过高
+      const tempAlert = pump1WaterTemp > 33 || pump2WaterTemp > 33;
+      // 检查压力是否过低
+      const pressureAlert = coolingWaterPressure < 0.1;
+
+      if (pumpPowerAlert || pressureAlert) {
+        systemStatus = 'critical';  // 失电或压力低为严重
+      } else if (waterLevelAlert || tempAlert) {
+        systemStatus = 'warning';   // 水位高或水温高为警告
       }
 
       // 构造新的指标数据对象
-      const newMetrics = {
-        bilgeWaterLevel,
-        bilgeWaterTemp,
-        oilSeparatorStatus,
-        bilgePumpStatus,
+      const newMetrics: AuxiliaryMetrics = {
+        well1WaterLevel,
+        well2WaterLevel,
+        well3WaterLevel,
+        well4WaterLevel,
+        pump1PowerStatus,
+        pump1WaterTemp,
+        pump2PowerStatus,
+        pump2WaterTemp,
         coolingWaterPressure,
-        coolingWaterTemp,
-        coolingWaterFlow,
-        coolingPumpStatus,
-        heatExchangerEfficiency,
         systemStatus,
         lastUpdate: Date.now(),
       };
@@ -808,14 +624,14 @@ export function AuxiliaryMonitoringPage() {
         ...device.parameters,
         // 根据设备类型更新相应参数
         '流量': device.parameters['流量'] ?
-                (device.parameters['流量'] as number) + (Math.random() - 0.5) * 5 : // ±5范围内波动
-                90 + Math.random() * 20,
+          (device.parameters['流量'] as number) + (Math.random() - 0.5) * 5 : // ±5范围内波动
+          90 + Math.random() * 20,
         '压力': device.parameters['压力'] ?
-                (device.parameters['压力'] as number) + (Math.random() - 0.5) * 0.2 : // ±0.2范围内波动
-                2.0 + Math.random() * 0.5,
+          (device.parameters['压力'] as number) + (Math.random() - 0.5) * 0.2 : // ±0.2范围内波动
+          2.0 + Math.random() * 0.5,
         '温度': device.parameters['温度'] ?
-                (device.parameters['温度'] as number) + (Math.random() - 0.5) * 2 : // ±2范围内波动
-                35 + Math.random() * 10,
+          (device.parameters['温度'] as number) + (Math.random() - 0.5) * 2 : // ±2范围内波动
+          35 + Math.random() * 10,
       }
     })));
   }, []);
@@ -839,21 +655,21 @@ export function AuxiliaryMonitoringPage() {
     const timestamp = Date.now();
     const newPoints: UnifiedMonitoringData[] = [
       {
-        id: `bilge_water_level_${timestamp}`,
+        id: `well1_water_level_${timestamp}`,
         equipmentId: 'WELL-001',
         timestamp,
         metricType: MetricType.PRESSURE,
-        value: (auxiliaryMetrics.bilgeWaterLevel + (Math.random() - 0.5) * 0.02) * 200, // 转换为mm
+        value: auxiliaryMetrics.well1WaterLevel + (Math.random() - 0.5) * 5,
         unit: 'mm',
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       },
       {
-        id: `bilge_water_temp_${timestamp}`,
-        equipmentId: 'WELL-001',
+        id: `pump1_water_temp_${timestamp}`,
+        equipmentId: 'PUMP-COOL-001',
         timestamp,
         metricType: MetricType.TEMPERATURE,
-        value: auxiliaryMetrics.bilgeWaterTemp + (Math.random() - 0.5) * 1,
+        value: auxiliaryMetrics.pump1WaterTemp + (Math.random() - 0.5) * 1,
         unit: '°C',
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
@@ -863,34 +679,14 @@ export function AuxiliaryMonitoringPage() {
         equipmentId: 'PUMP-COOL-001',
         timestamp,
         metricType: MetricType.PRESSURE,
-        value: auxiliaryMetrics.coolingWaterPressure + (Math.random() - 0.5) * 5,
-        unit: 'kPa',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `cooling_water_temp_${timestamp}`,
-        equipmentId: 'PUMP-COOL-001',
-        timestamp,
-        metricType: MetricType.TEMPERATURE,
-        value: auxiliaryMetrics.coolingWaterTemp + (Math.random() - 0.5) * 1,
-        unit: '°C',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `cooling_water_flow_${timestamp}`,
-        equipmentId: 'PUMP-COOL-001',
-        timestamp,
-        metricType: MetricType.SPEED,
-        value: auxiliaryMetrics.coolingWaterFlow + (Math.random() - 0.5) * 3,
-        unit: 'L/min',
+        value: auxiliaryMetrics.coolingWaterPressure + (Math.random() - 0.5) * 0.02,
+        unit: 'MPa',
         quality: DataQuality.NORMAL,
         source: DataSource.SENSOR_UPLOAD
       }
     ];
-    
-    setRealtimeChartData(prev => [...prev, ...newPoints].slice(-300)); // 保持最近60个时间点的数据（5个参数×60个时间点）
+
+    setRealtimeChartData(prev => [...prev, ...newPoints].slice(-180)); // 保持最近60个时间点的数据（3个参数×60个时间点）
   }, [auxiliaryMetrics]);
 
   /**
@@ -916,18 +712,18 @@ export function AuxiliaryMonitoringPage() {
       chartData: realtimeChartData,
       connectionStatus,
     };
-    
+
     // 创建Blob对象并下载
     const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: 'application/json',
     });
-    
+
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
     link.download = `auxiliary-data-${new Date().toISOString().split('T')[0]}.json`;
     link.click();
-    
+
     // 清理URL对象
     URL.revokeObjectURL(url);
   };
@@ -945,7 +741,7 @@ export function AuxiliaryMonitoringPage() {
             </h1>
             <p className="text-slate-400 mt-1">货船智能机舱辅助系统实时监控与管理</p>
           </div>
-          
+
           {/* 右侧控制按钮 */}
           <div className="flex items-center gap-4">
             {/* 连接状态指示器 */}
@@ -964,18 +760,242 @@ export function AuxiliaryMonitoringPage() {
           </div>
         </div>
 
-        {/* 辅助系统状态概览 */}
-        <AuxiliaryOverview metrics={auxiliaryMetrics} />
-
-        {/* 辅助设备状态区域 */}
+        {/* 舱底水系统实时监控区域 - 带动态图标效果 */}
         <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <h3 className="text-slate-100 mb-4">辅助设备状态</h3>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
+              <Anchor className="w-5 h-5 text-blue-400 animate-pulse" />
+              舱底水系统实时监控
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${auxiliaryMetrics.systemStatus === 'normal' ? 'bg-green-400' : auxiliaryMetrics.systemStatus === 'warning' ? 'bg-yellow-400' : 'bg-red-400'} animate-pulse`} />
+              <span className="text-sm text-slate-400">实时更新中</span>
+            </div>
+          </div>
+
+          {/* 舱底水系统动态指标卡片 - 横向排列 */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {auxiliaryDevices.map(device => (
-              <div key={device.id}>
-                <DeviceStatusCard device={device} />
+            {/* 1#集水井水位 */}
+            <div className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
+                  <Droplets className="w-5 h-5 text-blue-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.well1WaterLevel > 200 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.well1WaterLevel > 150 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.well1WaterLevel > 200 ? '超高' : auxiliaryMetrics.well1WaterLevel > 150 ? '偏高' : '正常'}
+                </Badge>
               </div>
-            ))}
+              <div className="text-2xl font-bold text-blue-400 mb-1">
+                {auxiliaryMetrics.well1WaterLevel.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">mm</span>
+              </div>
+              <div className="text-xs text-slate-400">1#集水井水位</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.well1WaterLevel > 200 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-blue-400 to-blue-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.well1WaterLevel / 250) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 2#集水井水位 */}
+            <div className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
+                  <Droplets className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.well2WaterLevel > 200 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.well2WaterLevel > 150 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.well2WaterLevel > 200 ? '超高' : auxiliaryMetrics.well2WaterLevel > 150 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-cyan-400 mb-1">
+                {auxiliaryMetrics.well2WaterLevel.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">mm</span>
+              </div>
+              <div className="text-xs text-slate-400">2#集水井水位</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.well2WaterLevel > 200 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-cyan-400 to-cyan-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.well2WaterLevel / 250) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 3#集水井水位 */}
+            <div className="bg-gradient-to-br from-teal-500/20 to-teal-600/10 border border-teal-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-teal-500/20 flex items-center justify-center">
+                  <Droplets className="w-5 h-5 text-teal-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.well3WaterLevel > 200 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.well3WaterLevel > 150 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.well3WaterLevel > 200 ? '超高' : auxiliaryMetrics.well3WaterLevel > 150 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-teal-400 mb-1">
+                {auxiliaryMetrics.well3WaterLevel.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">mm</span>
+              </div>
+              <div className="text-xs text-slate-400">3#集水井水位</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.well3WaterLevel > 200 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-teal-400 to-teal-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.well3WaterLevel / 250) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 4#集水井水位 */}
+            <div className="bg-gradient-to-br from-sky-500/20 to-sky-600/10 border border-sky-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-sky-500/20 flex items-center justify-center">
+                  <Droplets className="w-5 h-5 text-sky-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.well4WaterLevel > 200 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.well4WaterLevel > 150 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.well4WaterLevel > 200 ? '超高' : auxiliaryMetrics.well4WaterLevel > 150 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-sky-400 mb-1">
+                {auxiliaryMetrics.well4WaterLevel.toFixed(0)}
+                <span className="text-sm font-normal text-slate-400 ml-1">mm</span>
+              </div>
+              <div className="text-xs text-slate-400">4#集水井水位</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.well4WaterLevel > 200 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-sky-400 to-sky-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.well4WaterLevel / 250) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+          </div>
+        </Card>
+
+        {/* 冷却水泵系统实时监控区域 - 带动态图标效果 */}
+        <Card className="bg-slate-800/80 border-slate-700 p-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
+              <Waves className="w-5 h-5 text-emerald-400 animate-pulse" />
+              冷却水泵系统实时监控
+            </h3>
+            <div className="flex items-center gap-2">
+              <div className={`w-2 h-2 rounded-full ${auxiliaryMetrics.systemStatus === 'normal' ? 'bg-green-400' : auxiliaryMetrics.systemStatus === 'warning' ? 'bg-yellow-400' : 'bg-red-400'} animate-pulse`} />
+              <span className="text-sm text-slate-400">实时更新中</span>
+            </div>
+          </div>
+
+          {/* 冷却水泵系统动态指标卡片 */}
+          <div className="flex flex-row gap-4">
+            {/* 1#冷却水泵电源 */}
+            <div className="flex-1 bg-gradient-to-br from-emerald-500/20 to-emerald-600/10 border border-emerald-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                  <Power className="w-5 h-5 text-emerald-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.pump1PowerStatus === 1 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.pump1PowerStatus === 1 ? '失电' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-emerald-400 mb-1">
+                {auxiliaryMetrics.pump1PowerStatus === 0 ? 'ON' : 'OFF'}
+              </div>
+              <div className="text-xs text-slate-400">1#冷却水泵电源</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.pump1PowerStatus === 1 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-emerald-400 to-emerald-600'}`}
+                  style={{ width: auxiliaryMetrics.pump1PowerStatus === 0 ? '100%' : '20%' }}
+                />
+              </div>
+            </div>
+
+            {/* 1#冷却水温 */}
+            <div className="flex-1 bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center">
+                  <Thermometer className="w-5 h-5 text-amber-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.pump1WaterTemp > 33 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.pump1WaterTemp > 30 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.pump1WaterTemp > 33 ? '过热' : auxiliaryMetrics.pump1WaterTemp > 30 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-amber-400 mb-1">
+                {auxiliaryMetrics.pump1WaterTemp.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
+              </div>
+              <div className="text-xs text-slate-400">1#冷却水温</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.pump1WaterTemp > 33 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-amber-400 to-amber-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.pump1WaterTemp / 40) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 2#冷却水泵电源 */}
+            <div className="flex-1 bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
+                  <Power className="w-5 h-5 text-green-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.pump2PowerStatus === 1 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.pump2PowerStatus === 1 ? '失电' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-green-400 mb-1">
+                {auxiliaryMetrics.pump2PowerStatus === 0 ? 'ON' : 'OFF'}
+              </div>
+              <div className="text-xs text-slate-400">2#冷却水泵电源</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.pump2PowerStatus === 1 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-green-400 to-green-600'}`}
+                  style={{ width: auxiliaryMetrics.pump2PowerStatus === 0 ? '100%' : '20%' }}
+                />
+              </div>
+            </div>
+
+            {/* 2#冷却水温 */}
+            <div className="flex-1 bg-gradient-to-br from-orange-500/20 to-orange-600/10 border border-orange-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-orange-500/20 flex items-center justify-center">
+                  <Thermometer className="w-5 h-5 text-orange-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.pump2WaterTemp > 33 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.pump2WaterTemp > 30 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.pump2WaterTemp > 33 ? '过热' : auxiliaryMetrics.pump2WaterTemp > 30 ? '偏高' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-orange-400 mb-1">
+                {auxiliaryMetrics.pump2WaterTemp.toFixed(1)}
+                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
+              </div>
+              <div className="text-xs text-slate-400">2#冷却水温</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.pump2WaterTemp > 33 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-orange-400 to-orange-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.pump2WaterTemp / 40) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
+
+            {/* 冷却水压力 */}
+            <div className="flex-1 bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
+              <div className="flex items-center justify-between mb-3">
+                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
+                  <Gauge className="w-5 h-5 text-purple-400 animate-icon-pulse" />
+                </div>
+                <Badge className={`text-xs ${auxiliaryMetrics.coolingWaterPressure < 0.1 ? 'bg-red-500/20 text-red-400' : auxiliaryMetrics.coolingWaterPressure < 0.15 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
+                  {auxiliaryMetrics.coolingWaterPressure < 0.1 ? '过低' : auxiliaryMetrics.coolingWaterPressure < 0.15 ? '偏低' : '正常'}
+                </Badge>
+              </div>
+              <div className="text-2xl font-bold text-purple-400 mb-1">
+                {auxiliaryMetrics.coolingWaterPressure.toFixed(2)}
+                <span className="text-sm font-normal text-slate-400 ml-1">MPa</span>
+              </div>
+              <div className="text-xs text-slate-400">冷却水压力</div>
+              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
+                <div
+                  className={`h-full transition-all duration-500 ${auxiliaryMetrics.coolingWaterPressure < 0.1 ? 'bg-gradient-to-r from-red-400 to-red-600' : 'bg-gradient-to-r from-purple-400 to-purple-600'}`}
+                  style={{ width: `${Math.min((auxiliaryMetrics.coolingWaterPressure / 0.5) * 100, 100)}%` }}
+                />
+              </div>
+            </div>
           </div>
         </Card>
 
@@ -1046,132 +1066,7 @@ export function AuxiliaryMonitoringPage() {
           />
         </div>
 
-        {/* 主要内容网格布局 */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* 舱底水告警系统配置表格 */}
-          <div className="lg:col-span-2">
-            <Card className="bg-slate-800/80 border-slate-700 p-6">
-              <h2 className="text-slate-100 mb-6">舱底水告警系统</h2>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  {/* 表头 */}
-                  <thead>
-                    <tr className="border-b border-slate-700">
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">监测项目</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">单位</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">告警阈值</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">处理措施</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台显示</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台警告</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">就地显示</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">就地警告</th>
-                    </tr>
-                  </thead>
-                  
-                  {/* 表体 */}
-                  <tbody>
-                    {bilgeWaterSpecs.map((spec, index) => {
-                      /**
-                       * 获取当前实际值用于状态判断
-                       * 根据监测项目返回对应的当前值
-                       */
-                      const getCurrentValue = () => {
-                        switch (spec.item) {
-                          case '舱底水高位报警': return auxiliaryMetrics.bilgeWaterLevel * 100;
-                          case '舱底水超高位报警': return auxiliaryMetrics.bilgeWaterLevel * 100;
-                          case '油水分离器故障': return auxiliaryMetrics.oilSeparatorStatus;
-                          case '舱底水泵故障': return auxiliaryMetrics.bilgePumpStatus;
-                          default: return 0;
-                        }
-                      };
 
-                      const currentValue = getCurrentValue();
-                      let isAlert = false; // 是否触发告警状态
-                      
-                      /**
-                       * 检查当前值是否触发告警条件
-                       * 根据不同项目设置不同的判断逻辑
-                       */
-                      if (spec.item.includes('超高位') && (currentValue as number) > 80) {
-                        isAlert = true; // 超高位且超过80%触发告警
-                      } else if (spec.item.includes('故障') && (currentValue as string) !== 'normal') {
-                        isAlert = true; // 故障项目且状态不为正常时触发告警
-                      }
-
-                      return (
-                        <tr
-                          key={index}
-                          className={`border-b border-slate-700/50 ${
-                            isAlert ? 'bg-red-500/10' : 'hover:bg-slate-900/30'
-                          }`}
-                        >
-                          {/* 监测项目名称 */}
-                          <td className="py-3 px-3 text-slate-300 text-sm">{spec.item}</td>
-                          {/* 监测单位 */}
-                          <td className="py-3 px-3 text-slate-400 text-sm">{spec.unit}</td>
-                          {/* 告警阈值 */}
-                          <td className="py-3 px-3 text-amber-400 text-sm">{spec.threshold}</td>
-                          {/* 处理措施 */}
-                          <td className="py-3 px-3 text-cyan-400 text-sm">{spec.action}</td>
-                          {/* 驾控台显示复选框 */}
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.cockpitDisplay} disabled />
-                          </td>
-                          {/* 驾控台警告复选框 */}
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.cockpitWarning} disabled />
-                          </td>
-                          {/* 就地显示复选框 */}
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.localDisplay} disabled />
-                          </td>
-                          {/* 就地警告复选框 */}
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.localWarning} disabled />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-
-          {/* 侧边栏：系统效率和告警历史 */}
-          <div className="lg:col-span-1">
-            <div className="space-y-6">
-              {/* 系统效率监控卡片 */}
-              <Card className="bg-slate-800/80 border-slate-700 p-6">
-                <h3 className="text-slate-100 mb-4">系统效率</h3>
-                <div className="space-y-3">
-                  {/* 效率显示 */}
-                  <div className="flex justify-between">
-                    <span className="text-slate-400">热交换器效率</span>
-                    <span className="text-slate-100 font-medium">
-                      {auxiliaryMetrics.heatExchangerEfficiency.toFixed(1)}%
-                    </span>
-                  </div>
-                  
-                  {/* 效率进度条 */}
-                  <div className="w-full bg-slate-700 rounded-full h-2">
-                    <div
-                      className="bg-gradient-to-r from-blue-500 to-cyan-500 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${auxiliaryMetrics.heatExchangerEfficiency}%` }}
-                    />
-                  </div>
-                </div>
-              </Card>
-
-              {/* 告警摘要组件 */}
-              <AlertSummary
-                title="辅助系统告警"
-                equipmentId="auxiliary-system"
-                equipmentName="辅助系统"
-              />
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   );
