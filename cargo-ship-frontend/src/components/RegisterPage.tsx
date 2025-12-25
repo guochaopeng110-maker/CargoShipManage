@@ -44,11 +44,11 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 
-// 导入认证服务
-import { authService } from '../services/auth-service';
+// 从后端 API 客户端导入类型
+import { RegisterDto } from '@/services/api';
 
-// 导入类型定义
-import { RegisterRequest } from '../types/auth';
+// 导入认证状态管理
+import { useAuthStore } from '../stores/auth-store';
 
 /**
  * 注册页面属性接口
@@ -86,10 +86,13 @@ interface FormErrors {
 /**
  * 注册页面组件
  */
-export function RegisterPage({ 
-  onRegisterSuccess, 
-  onNavigateToLogin 
+export function RegisterPage({
+  onRegisterSuccess,
+  onNavigateToLogin
 }: RegisterPageProps) {
+  // 认证状态管理
+  const { register } = useAuthStore();
+
   // 表单状态管理
   const [formData, setFormData] = useState<RegisterFormData>({
     username: '',
@@ -204,15 +207,15 @@ export function RegisterPage({
     setErrors({});
     
     try {
-      const registerData: RegisterRequest = {
+      const registerData: RegisterDto = {
         username: formData.username,
         email: formData.email,
         password: formData.password,
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber || undefined,
       };
-      
-      await authService.register(registerData);
+
+      await register(registerData);
       
       setRegistrationSuccess(true);
       setTimeout(() => {

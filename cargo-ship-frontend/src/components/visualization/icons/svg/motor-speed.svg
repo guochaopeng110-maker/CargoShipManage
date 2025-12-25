@@ -1,0 +1,16 @@
+<!-- 电机转速图标 -->
+<!-- 设计要点：旋转的电机符号 + 速度线条 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 电机外圈 -->
+  <circle cx="12" cy="12" r="7" />
+  <!-- 电机转子 -->
+  <circle cx="12" cy="12" r="2.5" />
+  <!-- 转子叶片（3个） -->
+  <line x1="12" y1="12" x2="12" y2="7" />
+  <line x1="12" y1="12" x2="16.3" y2="14.5" transform="rotate(120 12 12)" />
+  <line x1="12" y1="12" x2="7.7" y2="14.5" transform="rotate(240 12 12)" />
+  <!-- 速度箭头 -->
+  <path d="M17 5 L19 3 M19 5 L21 3" stroke-width="1.5" />
+  <!-- RPM 文字提示线 -->
+  <path d="M19 8 Q21 10 19 12" stroke-width="1.5" />
+</svg>

@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(openspec list:*)",
+      "Bash(cat:*)",
+      "Bash(openspec validate:*)",
+      "Bash(openspec show:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(tree:*)",
+      "Bash(npm run build:*)",
+      "Bash(npx openspec:*)",
+      "Bash(wc:*)",
+      "Bash(git rm:*)"
+    ]
+  }
+}

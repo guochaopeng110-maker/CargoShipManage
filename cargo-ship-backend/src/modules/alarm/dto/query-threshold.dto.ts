@@ -1,4 +1,13 @@
-import { IsOptional, IsUUID, IsEnum, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsUUID,
+  IsEnum,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { MetricType } from '../../../database/entities/time-series-data.entity';
@@ -6,6 +15,9 @@ import { RuleStatus } from '../../../database/entities/threshold-config.entity';
 
 /**
  * 查询阈值配置 DTO
+ *
+ * 支持按设备、指标类型、监测点、规则状态筛选
+ * 支持分页查询
  */
 export class QueryThresholdDto {
   /**
@@ -29,6 +41,20 @@ export class QueryThresholdDto {
   @IsOptional()
   @IsEnum(MetricType, { message: '指标类型无效' })
   metricType?: MetricType;
+
+  /**
+   * 监测点名称（可选）
+   * 用于筛选特定监测点的阈值配置
+   */
+  @ApiPropertyOptional({
+    description: '监测点名称（可选，用于筛选特定监测点）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
 
   /**
    * 规则状态（可选）

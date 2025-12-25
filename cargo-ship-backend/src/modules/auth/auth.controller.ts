@@ -6,6 +6,7 @@ import {
   Put,
   Delete,
   Param,
+  Query,
   UseGuards,
   Req,
   HttpCode,
@@ -37,6 +38,7 @@ import {
   RefreshTokenDto,
   CreateUserDto,
   UpdateUserDto,
+  QueryUserDto,
 } from './dto';
 import {
   JwtAuthGuard,
@@ -78,6 +80,7 @@ export class AuthController {
   @ApiBody({ type: LoginDto })
   @ApiOkResponse({ description: '登录成功，返回访问令牌和刷新令牌' })
   @ApiUnauthorizedResponse({ description: '用户名或密码错误' })
+  @UseInterceptors(ClassSerializerInterceptor)
   async login(
     @Body() loginDto: LoginDto,
     @Req() req: Request,
@@ -156,10 +159,40 @@ export class AuthController {
   @UseInterceptors(ClassSerializerInterceptor)
   @Get('users')
   @ApiOperation({ summary: '获取所有用户列表 (管理员)' })
-  @ApiOkResponse({ description: '成功获取用户列表', type: [User] })
+  @ApiOkResponse({
+    description: '成功获取用户列表',
+    schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'number', example: 200 },
+        message: { type: 'string', example: '查询成功' },
+        data: {
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/User' },
+            },
+            total: { type: 'number', example: 100 },
+            page: { type: 'number', example: 1 },
+            pageSize: { type: 'number', example: 20 },
+            totalPages: { type: 'number', example: 5 },
+          },
+        },
+        timestamp: { type: 'number', example: 1734567890123 },
+      },
+    },
+  })
   @ApiForbiddenResponse({ description: '权限不足' })
-  async findAllUsers(): Promise<User[]> {
-    return this.authService.findAllUsers();
+  async findAllUsers(@Query() queryDto: QueryUserDto) {
+    const result = await this.authService.findAllUsers(queryDto);
+
+    return {
+      code: 200,
+      message: '查询成功',
+      data: result,
+      timestamp: Date.now(),
+    };
   }
 
   @ApiBearerAuth()

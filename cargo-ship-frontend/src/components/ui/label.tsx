@@ -46,22 +46,21 @@ type LabelProps = React.ComponentProps<typeof LabelPrimitive.Root>;
  * @param props.htmlFor - 关联的输入框ID，用于无障碍性
  * @param props.children - 标签文本内容
  */
-function Label({
-  className,
-  ...props
-}: LabelProps) {
-  return (
-    <LabelPrimitive.Root
-      data-slot="label" // 用于样式选择器的数据属性
-      className={cn(
-        // 基础样式：flex布局、间距、文字样式、选择禁用、组数据处理
-        "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
-        className, // 自定义样式类，允许覆盖默认样式
-      )}
-      {...props} // 展开其他属性（如htmlFor、children、className等）
-    />
-  );
-}
+const Label = React.forwardRef<
+  React.ElementRef<typeof LabelPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof LabelPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <LabelPrimitive.Root
+    ref={ref}
+    data-slot="label"
+    className={cn(
+      "flex items-center gap-2 text-sm leading-none font-medium select-none group-data-[disabled=true]:pointer-events-none group-data-[disabled=true]:opacity-50 peer-disabled:cursor-not-allowed peer-disabled:opacity-50",
+      className,
+    )}
+    {...props}
+  />
+));
+Label.displayName = LabelPrimitive.Root.displayName;
 
 // 导出标签组件
 export { Label };

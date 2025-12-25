@@ -17,6 +17,7 @@ import {
   ManyToMany,
   JoinTable,
 } from 'typeorm';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
 import { Permission } from './permission.entity';
 
@@ -48,6 +49,11 @@ export class Role {
    * 角色唯一标识符
    * 使用UUID v4格式，自动生成
    */
+  @ApiProperty({
+    description: '角色唯一标识符（UUID格式）',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    type: String,
+  })
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -59,6 +65,12 @@ export class Role {
    * - 全局唯一
    * - 系统角色使用SystemRole枚举值
    */
+  @ApiProperty({
+    description: '角色名称（全局唯一）',
+    example: 'administrator',
+    type: String,
+    maxLength: 50,
+  })
   @Column({ type: 'varchar', length: 50, unique: true })
   name: string;
 
@@ -70,6 +82,12 @@ export class Role {
    * - 可选字段（nullable）
    * - 用于说明角色的职责和权限范围
    */
+  @ApiPropertyOptional({
+    description: '角色描述，说明角色的职责和权限范围',
+    example: '系统管理员，拥有全部权限',
+    type: String,
+    maxLength: 255,
+  })
   @Column({ type: 'varchar', length: 255, nullable: true })
   description: string;
 
@@ -81,6 +99,12 @@ export class Role {
    * - false: 自定义角色，可以修改和删除
    * - 默认值：false
    */
+  @ApiProperty({
+    description: '是否为系统角色（系统角色不可删除或重命名）',
+    example: true,
+    type: Boolean,
+    default: false,
+  })
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem: boolean;
 
@@ -92,6 +116,12 @@ export class Role {
    * - false: 角色已停用，不能分配给新用户
    * - 默认值：true
    */
+  @ApiProperty({
+    description: '角色是否激活',
+    example: true,
+    type: Boolean,
+    default: true,
+  })
   @Column({ name: 'is_active', type: 'boolean', default: true })
   isActive: boolean;
 
@@ -102,6 +132,10 @@ export class Role {
    * - 通过user_roles中间表关联
    * - 反向关系（由User实体维护）
    */
+  @ApiPropertyOptional({
+    description: '拥有此角色的用户列表',
+    type: () => [User],
+  })
   @ManyToMany(() => User, (user) => user.roles)
   users: User[];
 
@@ -113,6 +147,10 @@ export class Role {
    * - 急加载（eager: true）
    * - 一个角色可以有多个权限
    */
+  @ApiProperty({
+    description: '角色拥有的权限列表',
+    type: () => [Permission],
+  })
   @ManyToMany(() => Permission, (permission) => permission.roles, {
     eager: true,
   })
@@ -127,6 +165,11 @@ export class Role {
    * 记录创建时间
    * 自动设置为首次保存时的时间戳
    */
+  @ApiProperty({
+    description: '记录创建时间',
+    example: '2025-01-01T10:00:00.000Z',
+    type: Date,
+  })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
@@ -134,6 +177,11 @@ export class Role {
    * 记录最后更新时间
    * 每次更新时自动更新为当前时间戳
    */
+  @ApiProperty({
+    description: '记录最后更新时间',
+    example: '2025-01-02T15:30:00.000Z',
+    type: Date,
+  })
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 
@@ -145,6 +193,11 @@ export class Role {
    * - 有值表示已软删除，记录删除时间
    * - 系统角色不允许删除
    */
+  @ApiPropertyOptional({
+    description: '软删除时间（系统角色不允许删除）',
+    example: null,
+    type: Date,
+  })
   @DeleteDateColumn({ name: 'deleted_at' })
   deletedAt: Date;
 }

@@ -13,18 +13,26 @@ import {
   HttpStatus,
   Res,
   NotFoundException,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
+  ApiOkResponse,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
+  ApiParam,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { ReportService } from './report.service';
 import { ExportService } from './export.service';
+import { HealthReport } from '../../database/entities';
 import {
-  CreateHealthReportDto,
+  GenerateHealthReportDto,
   QueryHealthReportDto,
   UpdateHealthReportDto,
 } from './dto';
@@ -33,19 +41,10 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { ErrorResponseDto } from '../../common/dto';
 
-/**
- * 健康报告控制器
- * 提供健康报告的生成和查询功能
- *
- * 权限说明：
- * - report:create - 生成健康报告（Administrator, Operator）
- * - report:read - 查看健康报告（Administrator, Operator, Viewer）
- * - report:update - 更新健康报告（Administrator, Operator）
- * - report:delete - 删除健康报告（Administrator）
- * - report:export - 导出健康报告（Administrator, Operator）
- */
 @ApiTags('健康报告')
+@ApiExtraModels(HealthReport) // ✅ 显式注册 HealthReport 到 Swagger schemas
 @ApiBearerAuth()
 @Controller('api/reports/health')
 @UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
@@ -57,41 +56,42 @@ export class ReportController {
 
   /**
    * 生成健康评估报告
-   * POST /api/reports/health
-   * 权限：report:create
-   * 角色：administrator, operator
    */
   @Post()
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({
-    summary: '生成健康评估报告',
-    description:
-      '根据指定时间范围和设备生成健康评估报告，支持单设备报告和汇总报告',
-  })
-  @ApiResponse({
-    status: 200,
-    description: '生成成功',
-  })
-  @ApiResponse({
-    status: 400,
-    description: '请求参数错误',
-  })
-  @ApiResponse({
-    status: 401,
-    description: '未授权，请先登录',
-  })
-  @ApiResponse({
-    status: 403,
-    description: '权限不足',
-  })
   @Permissions('report:create')
   @Roles('administrator', 'operator')
+  @ApiOperation({
+    summary: '按需生成新的健康评估报告 (同步)',
+    description:
+      '根据指定的设备ID和时间范围，立即触发一次新的健康评估，并同步返回生成的报告。',
+  })
+  @ApiOkResponse({
+    description: '生成成功，返回新的报告实体',
+    type: HealthReport,
+  })
+  @ApiBadRequestResponse({
+    description: '请求参数验证失败或设备ID格式错误',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: '设备不存在',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:create 权限',
+    type: ErrorResponseDto,
+  })
   async generateReport(
-    @Body() createDto: CreateHealthReportDto,
+    @Body() generateDto: GenerateHealthReportDto,
     @Request() req: any,
   ) {
-    const userId = req.user.userId;
-    const report = await this.reportService.generateReport(createDto, userId);
+    const userId = req.user.id;
+    const report = await this.reportService.generateReport(generateDto, userId);
 
     return {
       code: 200,
@@ -103,29 +103,50 @@ export class ReportController {
 
   /**
    * 查询报告列表
-   * GET /api/reports/health
-   * 权限：report:read
-   * 角色：administrator, operator, viewer
    */
   @Get()
+  @Permissions('report:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '查询报告列表',
     description: '分页查询健康评估报告列表，支持按设备ID、报告类型筛选',
   })
-  @ApiResponse({
-    status: 200,
-    description: '查询成功',
+  @ApiOkResponse({
+    description: '成功获取健康报告列表',
+    schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'number', example: 200 },
+        message: { type: 'string', example: '查询成功' },
+        data: {
+          type: 'object',
+          properties: {
+            items: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/HealthReport' },
+            },
+            total: { type: 'number', example: 50 },
+            page: { type: 'number', example: 1 },
+            pageSize: { type: 'number', example: 20 },
+            totalPages: { type: 'number', example: 3 },
+          },
+        },
+        timestamp: { type: 'number', example: 1734567890123 },
+      },
+    },
   })
-  @ApiResponse({
-    status: 401,
-    description: '未授权，请先登录',
+  @ApiBadRequestResponse({
+    description: '查询参数格式错误',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: 403,
-    description: '权限不足',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('report:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:read 权限',
+    type: ErrorResponseDto,
+  })
   async findAll(@Query() queryDto: QueryHealthReportDto) {
     const result = await this.reportService.findAll(queryDto);
 
@@ -139,34 +160,41 @@ export class ReportController {
 
   /**
    * 查询报告详情
-   * GET /api/reports/health/:id
-   * 权限：report:read
-   * 角色：administrator, operator, viewer
    */
   @Get(':id')
+  @Permissions('report:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '查询报告详情',
     description: '根据ID查询单个健康评估报告的详细信息',
   })
-  @ApiResponse({
-    status: 200,
-    description: '查询成功',
+  @ApiParam({
+    name: 'id',
+    description: '报告ID (UUID格式)',
+    type: String,
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @ApiResponse({
-    status: 401,
-    description: '未授权，请先登录',
+  @ApiOkResponse({
+    description: '查询成功，返回报告详细信息',
+    type: HealthReport,
   })
-  @ApiResponse({
-    status: 403,
-    description: '权限不足',
+  @ApiBadRequestResponse({
+    description: '报告ID格式错误（非有效的UUID）',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: 404,
-    description: '资源不存在',
+  @ApiNotFoundResponse({
+    description: '报告不存在',
+    type: ErrorResponseDto,
   })
-  @Permissions('report:read')
-  @Roles('administrator', 'operator', 'viewer')
-  async findOne(@Param('id') id: string) {
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:read 权限',
+    type: ErrorResponseDto,
+  })
+  async findOne(@Param('id', ParseUUIDPipe) id: string) {
     const report = await this.reportService.findOne(id);
 
     return {
@@ -179,42 +207,47 @@ export class ReportController {
 
   /**
    * 更新报告
-   * PUT /api/reports/health/:id
-   * 权限：report:update
-   * 角色：administrator, operator
-   *
-   * 说明：只允许更新备注和附加说明，不允许修改报告的核心数据（健康评分、统计数据等）
    */
   @Put(':id')
   @HttpCode(HttpStatus.OK)
+  @Permissions('report:update')
+  @Roles('administrator', 'operator')
   @ApiOperation({
     summary: '更新报告',
     description: '更新报告的备注和附加说明（不允许修改核心数据）',
   })
-  @ApiResponse({
-    status: 200,
-    description: '更新成功',
+  @ApiParam({
+    name: 'id',
+    description: '报告ID (UUID格式)',
+    type: String,
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @ApiResponse({
-    status: 401,
-    description: '未授权，请先登录',
+  @ApiOkResponse({
+    description: '报告更新成功，返回更新后的报告信息',
+    type: HealthReport,
   })
-  @ApiResponse({
-    status: 403,
-    description: '权限不足',
+  @ApiBadRequestResponse({
+    description: '请求参数验证失败或报告ID格式错误',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: 404,
+  @ApiNotFoundResponse({
     description: '报告不存在',
+    type: ErrorResponseDto,
   })
-  @Permissions('report:update')
-  @Roles('administrator', 'operator')
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:update 权限',
+    type: ErrorResponseDto,
+  })
   async update(
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
     @Body() updateDto: UpdateHealthReportDto,
     @Request() req: any,
   ) {
-    const userId = req.user.userId;
+    const userId = req.user.id;
     const report = await this.reportService.update(id, updateDto, userId);
 
     return {
@@ -227,36 +260,50 @@ export class ReportController {
 
   /**
    * 删除报告
-   * DELETE /api/reports/health/:id
-   * 权限：report:delete
-   * 角色：administrator
    */
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
+  @Permissions('report:delete')
+  @Roles('administrator')
   @ApiOperation({
     summary: '删除报告',
     description: '删除指定的健康评估报告（物理删除）',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiParam({
+    name: 'id',
+    description: '报告ID (UUID格式)',
+    type: String,
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+  })
+  @ApiOkResponse({
     description: '删除成功',
+    schema: {
+      type: 'object',
+      properties: {
+        code: { type: 'number', example: 200 },
+        message: { type: 'string', example: '报告删除成功' },
+        timestamp: { type: 'number', example: 1700000000000 },
+      },
+    },
   })
-  @ApiResponse({
-    status: 401,
-    description: '未授权，请先登录',
+  @ApiBadRequestResponse({
+    description: '报告ID格式错误（非有效的UUID）',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: 403,
-    description: '权限不足',
-  })
-  @ApiResponse({
-    status: 404,
+  @ApiNotFoundResponse({
     description: '报告不存在',
+    type: ErrorResponseDto,
   })
-  @Permissions('report:delete')
-  @Roles('administrator')
-  async remove(@Param('id') id: string, @Request() req: any) {
-    const userId = req.user.userId;
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:delete 权限',
+    type: ErrorResponseDto,
+  })
+  async remove(@Param('id', ParseUUIDPipe) id: string, @Request() req: any) {
+    const userId = req.user.id;
     const result = await this.reportService.remove(id, userId);
 
     return {
@@ -268,45 +315,55 @@ export class ReportController {
 
   /**
    * 导出报告为Excel
-   * GET /api/reports/health/:id/export
-   * 权限：report:export
-   * 角色：administrator, operator
    */
   @Get(':id/export')
+  @Permissions('report:export')
+  @Roles('administrator', 'operator')
   @ApiOperation({
     summary: '导出报告为Excel',
     description: '将指定的健康评估报告导出为Excel文件',
   })
-  @ApiResponse({
-    status: 200,
-    description: '导出成功',
+  @ApiParam({
+    name: 'id',
+    description: '报告ID (UUID格式)',
+    type: String,
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @ApiResponse({
-    status: 401,
-    description: '未授权，请先登录',
+  @ApiOkResponse({
+    description: '导出成功，返回Excel文件流',
+    schema: {
+      type: 'string',
+      format: 'binary',
+    },
   })
-  @ApiResponse({
-    status: 403,
-    description: '权限不足',
+  @ApiBadRequestResponse({
+    description: '报告ID格式错误（非有效的UUID）',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: 404,
+  @ApiNotFoundResponse({
     description: '报告不存在',
+    type: ErrorResponseDto,
   })
-  @Permissions('report:export')
-  @Roles('administrator', 'operator')
-  async exportReport(@Param('id') id: string, @Res() res: Response) {
-    // 查询报告
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:export 权限',
+    type: ErrorResponseDto,
+  })
+  async exportReport(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res() res: Response,
+  ) {
     const report = await this.reportService.findOne(id);
 
     if (!report) {
       throw new NotFoundException(`报告 ${id} 不存在`);
     }
 
-    // 生成Excel文件
     const buffer = await this.exportService.exportReportToExcel(report);
 
-    // 设置响应头
     const filename = `健康报告_${report.equipmentId || '汇总'}_${new Date().getTime()}.xlsx`;
     res.setHeader(
       'Content-Type',
@@ -318,7 +375,6 @@ export class ReportController {
     );
     res.setHeader('Content-Length', buffer.length);
 
-    // 发送文件
     res.send(buffer);
   }
 }

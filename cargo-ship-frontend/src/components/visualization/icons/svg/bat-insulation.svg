@@ -1,0 +1,10 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 电池符号 -->
+  <rect x="5" y="8" width="10" height="8" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <rect x="15" y="11" width="1.5" height="2" fill="currentColor"/>
+  <!-- 绝缘层波纹 -->
+  <path d="M17 8 Q18 9 17 10 Q16 11 17 12 Q18 13 17 14 Q16 15 17 16" stroke="currentColor" stroke-width="1.2" fill="none"/>
+  <path d="M19 8 Q20 9 19 10 Q18 11 19 12 Q20 13 19 14 Q18 15 19 16" stroke="currentColor" stroke-width="1.2" fill="none"/>
+  <!-- 电阻符号 -->
+  <path d="M7 5 L7 7 M13 5 L13 7" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+</svg>

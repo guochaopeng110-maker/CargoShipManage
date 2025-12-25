@@ -16,6 +16,7 @@ export interface ParsedTimeSeriesData {
   equipmentId: string; // 设备ID（必填）
   timestamp: Date; // 时间戳（必填）
   metricType: MetricType; // 指标类型（必填）
+  monitoringPoint?: string; // 监测点（可选，用于精确匹配告警规则）
   value: number; // 数值（必填）
   unit?: string; // 单位（可选）
   quality?: DataQuality; // 数据质量（可选）
@@ -34,7 +35,7 @@ export interface ParseResult {
 
 /**
  * 文件解析服务
- * 负责解析Excel和CSV格式的时间序列数据文件
+ * 负责解析Excel、CSV和JSON格式的时间序列数据文件
  */
 @Injectable()
 export class FileParserService {
@@ -55,6 +56,12 @@ export class FileParserService {
     采集时间: 'timestamp',
     指标类型: 'metricType',
     监测指标: 'metricType',
+    监测点: 'monitoringPoint',
+    监控点: 'monitoringPoint',
+    测点: 'monitoringPoint',
+    监测点名称: 'monitoringPoint',
+    'Monitoring Point': 'monitoringPoint',
+    MonitoringPoint: 'monitoringPoint',
     数值: 'value',
     值: 'value',
     测量值: 'value',
@@ -73,6 +80,12 @@ export class FileParserService {
     电流: MetricType.CURRENT,
     电压: MetricType.VOLTAGE,
     功率: MetricType.POWER,
+    频率: MetricType.FREQUENCY,
+    液位: MetricType.LEVEL,
+    水位: MetricType.LEVEL,
+    电阻: MetricType.RESISTANCE,
+    开关状态: MetricType.SWITCH,
+    开关: MetricType.SWITCH,
   };
 
   // 数据质量映射（中文->枚举值）
@@ -96,6 +109,10 @@ export class FileParserService {
     [MetricType.CURRENT]: { min: 0, max: 1000 }, // A
     [MetricType.VOLTAGE]: { min: 0, max: 1000 }, // V
     [MetricType.POWER]: { min: 0, max: 10000 }, // kW
+    [MetricType.FREQUENCY]: { min: 0, max: 100 }, // Hz
+    [MetricType.LEVEL]: { min: 0, max: 10000 }, // mm
+    [MetricType.RESISTANCE]: { min: 0, max: 10000 }, // Ω/V
+    [MetricType.SWITCH]: { min: 0, max: 1 }, // 开关状态 (0/1)
   };
 
   /**
@@ -167,6 +184,56 @@ export class FileParserService {
         },
       });
     });
+  }
+
+  /**
+   * 解析JSON文件
+   *
+   * 支持两种JSON格式:
+   * 1. 对象数组: [{ equipmentId: "xxx", timestamp: "xxx", ... }, ...]
+   * 2. 包含data字段的对象: { data: [{ equipmentId: "xxx", ... }] }
+   *
+   * @param buffer 文件缓冲区
+   * @returns 解析结果
+   */
+  async parseJSON(buffer: Buffer): Promise<ParseResult> {
+    try {
+      const jsonContent = buffer.toString('utf-8');
+      let parsedData: any;
+
+      // 解析JSON
+      try {
+        parsedData = JSON.parse(jsonContent);
+      } catch (error) {
+        throw new BadRequestException(`JSON文件格式错误: ${error.message}`);
+      }
+
+      // 提取数据数组
+      let rawData: any[];
+      if (Array.isArray(parsedData)) {
+        // 格式1: 直接是数组
+        rawData = parsedData;
+      } else if (parsedData && Array.isArray(parsedData.data)) {
+        // 格式2: { data: [...] }
+        rawData = parsedData.data;
+      } else {
+        throw new BadRequestException(
+          'JSON文件格式错误: 期望是数组或包含data字段的对象',
+        );
+      }
+
+      if (rawData.length === 0) {
+        throw new BadRequestException('JSON文件中没有数据');
+      }
+
+      // 解析并验证数据
+      return this.parseAndValidateData(rawData);
+    } catch (error) {
+      if (error instanceof BadRequestException) {
+        throw error;
+      }
+      throw new BadRequestException(`JSON文件解析失败: ${error.message}`);
+    }
   }
 
   /**
@@ -263,12 +330,20 @@ export class FileParserService {
     // 验证指标类型（如果提供）
     if (row.metricType) {
       const metricTypeValue = String(row.metricType).trim();
-      if (!this.METRIC_TYPE_MAPPING[metricTypeValue]) {
-        const validTypes = Object.keys(this.METRIC_TYPE_MAPPING).join(', ');
+      const isChineseType = !!this.METRIC_TYPE_MAPPING[metricTypeValue];
+      const isEnglishType = Object.values(MetricType).some(
+        (v) => v === metricTypeValue.toLowerCase(),
+      );
+
+      if (!isChineseType && !isEnglishType) {
+        const validChineseTypes = Object.keys(this.METRIC_TYPE_MAPPING).join(
+          ', ',
+        );
+        const validEnglishTypes = Object.values(MetricType).join(', ');
         return {
           row: rowNumber,
           data: row,
-          reason: `无效的指标类型: ${metricTypeValue}，有效值为: ${validTypes}`,
+          reason: `无效的指标类型: ${metricTypeValue}，有效值为: ${validChineseTypes} 或 ${validEnglishTypes}`,
         };
       }
     }
@@ -347,6 +422,18 @@ export class FileParserService {
       value,
       source: DataSource.FILE_IMPORT, // 默认来源为文件导入
     };
+
+    // 可选字段：监测点
+    if (row.monitoringPoint) {
+      const trimmed = String(row.monitoringPoint).trim();
+      if (trimmed.length > 100) {
+        throw new Error('监测点名称过长（最大100字符）');
+      }
+      // 空字符串转为 undefined
+      result.monitoringPoint = trimmed || undefined;
+    } else {
+      result.monitoringPoint = undefined;
+    }
 
     // 可选字段：单位
     if (row.unit) {
@@ -470,6 +557,10 @@ export class FileParserService {
       [MetricType.CURRENT]: 'A',
       [MetricType.VOLTAGE]: 'V',
       [MetricType.POWER]: 'kW',
+      [MetricType.FREQUENCY]: 'Hz',
+      [MetricType.LEVEL]: 'mm',
+      [MetricType.RESISTANCE]: 'Ω/V',
+      [MetricType.SWITCH]: '',
     };
     return unitMap[metricType] || '';
   }

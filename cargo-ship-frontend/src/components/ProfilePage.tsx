@@ -44,12 +44,11 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 
-// 导入认证服务和类型
-import { authService } from '../services/auth-service';
-import { User as UserType } from '../types/auth';
+// 从后端 API 客户端导入类型
+import { User as UserType } from '@/services/api';
 
 // 导入认证状态管理
-import { useAuth } from '../stores/auth-store';
+import { useAuthStore } from '../stores/auth-store';
 
 /**
  * 个人信息页面属性接口
@@ -91,7 +90,7 @@ interface FormErrors {
  */
 export function ProfilePage({ onNavigateToChangePassword }: ProfilePageProps) {
   // 认证状态管理
-  const { user: authUser, updateProfile } = useAuth();
+  const { user: authUser, refreshCurrentUser, updateProfile } = useAuthStore();
 
   // 用户信息状态
   const [user, setUserState] = useState<UserType | null>(authUser);
@@ -140,22 +139,24 @@ export function ProfilePage({ onNavigateToChangePassword }: ProfilePageProps) {
       setError(null);
       setUsingMock(false);
 
-      // 调用authService获取当前用户信息（已包含Mock降级逻辑）
-      const userData = await authService.getCurrentUser();
+      // 调用 auth-store 获取当前用户信息
+      await refreshCurrentUser();
       
-      // 检查是否使用了Mock服务
-      if ((userData as any)._usingMock) {
-        setUsingMock(true);
+      // 直接从store获取最新状态，避免异步更新时机问题
+      const updatedUserData = useAuthStore.getState().user;
+
+      if (!updatedUserData) {
+        throw new Error('获取用户信息失败');
       }
-      
-      setUserState(userData);
+
+      setUserState(updatedUserData);
       
       // 初始化表单数据
       setFormData({
-        username: userData.username || '',
-        email: userData.email || '',
-        fullName: userData.fullName || '',
-        phoneNumber: userData.phoneNumber || '',
+        username: updatedUserData.username || '',
+        email: updatedUserData.email || '',
+        fullName: updatedUserData.fullName || '',
+        phoneNumber: updatedUserData.phoneNumber || '',
       });
 
       // 更新认证状态管理中的用户信息
@@ -255,24 +256,19 @@ export function ProfilePage({ onNavigateToChangePassword }: ProfilePageProps) {
         throw new Error('用户信息不存在');
       }
 
-      // 调用authService更新用户信息（已包含Mock降级逻辑）
-      const updatedUser = await authService.updateUser(user.id, {
+      // 调用 auth-store 更新用户信息
+      await updateProfile({
         username: formData.username,
         email: formData.email,
         fullName: formData.fullName,
         phoneNumber: formData.phoneNumber || undefined,
       });
 
-      // 检查是否使用了Mock服务
-      const isUsingMockService = (updatedUser as any)._usingMock;
-      if (isUsingMockService) {
-        setUsingMock(true);
-      }
-
-      // 更新本地状态
+      // 直接从store获取最新数据，确保同步
+      const updatedUser = useAuthStore.getState().user;
       setUserState(updatedUser);
       setIsEditing(false);
-      setSuccessMessage(isUsingMockService ? '个人信息更新成功（使用Mock服务）' : '个人信息更新成功！');
+      setSuccessMessage('个人信息更新成功！');
 
       // 3秒后清除成功消息
       setTimeout(() => {

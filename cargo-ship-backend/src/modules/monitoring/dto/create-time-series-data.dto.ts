@@ -26,6 +26,9 @@ import {
  * - timestamp: 数据时间戳
  * - metricType: 指标类型
  * - value: 指标数值
+ *
+ * 推荐字段：
+ * - monitoringPoint: 监测点名称（用于精确标识业务监测点）
  */
 export class CreateTimeSeriesDataDto {
   /**
@@ -66,6 +69,22 @@ export class CreateTimeSeriesDataDto {
   @IsNotEmpty({ message: '指标类型不能为空' })
   @IsEnum(MetricType, { message: '指标类型无效' })
   metricType: MetricType;
+
+  /**
+   * 监测点名称（推荐填写）
+   * 用于区分相同物理类型但业务含义不同的监测点
+   * 例如：metricType=voltage 时，可能有"总电压"、"单体电压"等不同的监测点
+   * 通过此字段实现精确的告警规则匹配和数据查询
+   */
+  @ApiPropertyOptional({
+    description: '监测点名称（推荐填写，用于精确标识业务监测点）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
 
   /**
    * 指标数值（必填）

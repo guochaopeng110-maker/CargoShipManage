@@ -1,517 +1,454 @@
-import React, { useState, useEffect } from 'react';
+/**
+ * 货船智能机舱管理系统 - 健康评估页面（重构版 v3.0）
+ *
+ * 本页面采用"分-细"两段式垂直布局，提供全局健康状况概览。
+ *
+ * 核心特性：
+ * 1. "分"：系统健康卡片矩阵，展示各核心系统的健康状况
+ * 2. "细"：历史健康报告列表，支持分页查询、生成和导出
+ *
+ * 数据流架构：
+ * - 历史数据：通过 HTTP API 查询历史报告列表
+ * - 跨 Store 聚合：组合 reports-store（健康报告+健康评分）+ alarms-store（活跃告警）
+ *
+ * 页面职责：
+ * 1. 数据聚合和状态管理
+ * 2. 协调子组件的交互和导航
+ * 3. 处理用户操作（刷新、生成报告、导出等）
+ * 4. 错误处理和加载状态展示
+ *
+ * 重构说明（v3.0）：
+ * - 移除了对 health-store 的依赖
+ * - 使用统一的 reports-store 管理健康评分和报告
+ * - 简化了状态管理逻辑
+ *
+ * @author 货船智能机舱管理系统开发团队
+ * @version 3.0.0
+ * @since 2025-12-16
+ */
+
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
-import { Badge } from './ui/badge';
-import { AlertCircle, AlertTriangle, Info, Eye, Download, RefreshCw, Plus } from 'lucide-react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/tabs';
+import { DateRangePicker } from './ui/date-range-picker';
+import { DateRange } from 'react-day-picker';
+import { subDays } from 'date-fns';
+import { Calendar, History, Activity, AlertCircle, RefreshCw } from 'lucide-react';
 
-// 类型定义和服务导入
-import {
-  HealthReport,                    // 健康报告实体
-  HealthMetric,                    // 健康指标
-  EquipmentHealthStatus,           // 设备健康状态
-  ReportType,                      // 报告类型
-  ReportFormat,                    // 报告格式枚举
-} from '../types/health';
-import { healthService } from '../services/health-service';  // 健康评估服务
-import { GaugeChart } from './GaugeChart';  // 仪表盘图表组件
+// 导入核心组件
+import { SystemHealthCard } from './HealthAssessmentPage/SystemHealthCard';
+import { HealthReportsList } from './HealthAssessmentPage/HealthReportsList';
 
-// 生成Mock数据的辅助函数
-const generateMockSOHData = () => {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月'];
-  return months.map((month, index) => ({
-    time: month,
-    soh: Math.max(85, 98 - index * 1.2 + (Math.random() * 2 - 1)), // 模拟SOH趋势
-  }));
-};
+// 导入配置和类型
+import { coreSystemsConfig } from '../config/core-systems';
+import { AlarmRecord } from '@/services/api'; // 直接从 API 客户端导入
 
-const generateMockHealthData = () => {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月'];
-  return months.map((month, index) => ({
-    time: month,
-    health: Math.max(80, 95 - index * 1.0 + (Math.random() * 3 - 1.5)), // 模拟健康趋势
-  }));
-};
+// 从 reports-store 导入前端业务类型（已合并 health-store）
+import type { HealthStatus, TrendDirection, SystemHealthScore } from '../stores/reports-store';
 
-// 设备健康列表模拟数据
-const mockDeviceHealthList = [
-  {
-    id: 'battery-001',
-    name: '电池系统',
-    score: 92,
-    status: 'healthy' as EquipmentHealthStatus,
-    lastAssessment: '2025-11-20 08:00:00',
-  },
-  {
-    id: 'propulsion-001',
-    name: '推进系统',
-    score: 85,
-    status: 'warning' as EquipmentHealthStatus,
-    lastAssessment: '2025-11-20 07:55:00',
-  },
-  {
-    id: 'inverter-001',
-    name: '逆变器系统',
-    score: 88,
-    status: 'healthy' as EquipmentHealthStatus,
-    lastAssessment: '2025-11-20 07:50:00',
-  },
-  {
-    id: 'aux-001',
-    name: '辅助设备',
-    score: 95,
-    status: 'healthy' as EquipmentHealthStatus,
-    lastAssessment: '2025-11-20 07:45:00',
-  },
-  {
-    id: 'cooling-001',
-    name: '冷却系统',
-    score: 65,
-    status: 'critical' as EquipmentHealthStatus,
-    lastAssessment: '2025-11-20 07:40:00',
-  },
-];
+// 类型别名
+type Alarm = AlarmRecord;
+const AlertSeverity = AlarmRecord.severity;
+const AlarmStatus = AlarmRecord.status;
 
-// 故障诊断模拟数据
-const mockFaultDiagnostics = [
-  {
-    id: 1,
-    timestamp: '2025-11-20 07:23:15',
-    device: '电池系统',
-    description: '电池温度过高：左串1，模块3',
-    severity: 3,
-    recommendation: '立即启动冷却系统，降低负载',
-  },
-  {
-    id: 2,
-    timestamp: '2025-11-20 06:45:22',
-    device: '推进系统',
-    description: '推进系统效率下降15%',
-    severity: 2,
-    recommendation: '检查电机轴承润滑状态',
-  },
-  {
-    id: 3,
-    timestamp: '2025-11-20 05:30:10',
-    device: '冷却系统',
-    description: '冷却液流量低于正常值',
-    severity: 2,
-    recommendation: '检查冷却泵和管路',
-  },
-  {
-    id: 4,
-    timestamp: '2025-11-20 04:15:45',
-    device: '逆变器系统',
-    description: '1#逆变器电压波动',
-    severity: 1,
-    recommendation: '监控电压稳定性，必要时降低负载',
-  },
-  {
-    id: 5,
-    timestamp: '2025-11-20 03:00:00',
-    device: '电池系统',
-    description: 'SOC低于20%',
-    severity: 1,
-    recommendation: '安排充电计划',
-  },
-];
+// 导入状态管理
+import { useReportsStore } from '../stores/reports-store';
+import { useEquipmentStore } from '../stores/equipment-store'; // 新增设备管理 Store
+
+// 导入工具函数
+import { getIconByDeviceType, getRouteByDeviceType } from '../config/core-systems';
+
+
 
 /**
- * 健康评估页面组件
+ * HealthAssessmentPage 组件
  *
- * 功能说明：
- * - 显示设备健康评估报告和仪表板
- * - 支持实时健康数据监控和历史趋势分析
- * - 提供设备健康列表和故障诊断信息
- * - 集成健康评估API服务
- * - 支持报告生成和导出功能
+ * 健康评估页面主组件，实现"总-分-细"三段式布局
  *
- * 数据来源：
- * - 实时健康数据：通过 healthService API 获取
- * - 历史趋势数据：从后端历史数据查询
- * - 故障诊断：集成告警系统数据
- *
- * @returns {React.ReactElement} 健康评估页面组件
+ * @returns React 组件
  */
 export function HealthAssessmentPage() {
-  // 组件状态管理
-  const [loading, setLoading] = useState(false);         // 加载状态
-  const [error, setError] = useState<string | null>(null); // 错误状态
-  const [refreshing, setRefreshing] = useState(false);   // 刷新状态
-  const [overallHealthScore, setOverallHealthScore] = useState(92); // 整体健康评分
-  
-  // 使用健康评估服务
-  const [currentReport, setCurrentReport] = useState<HealthReport | null>(null);
-  const [selectedEquipment, setSelectedEquipment] = useState<string>('battery-001');
+  // ==================== 路由导航 ====================
+  const navigate = useNavigate();
 
-  // 加载设备健康数据
-  const loadEquipmentHealth = async (equipmentId: string) => {
-    setLoading(true);
-    setError(null);
-    try {
-      // 调用健康评估API获取设备健康报告
-      const report = await healthService.getEquipmentHealth(equipmentId, {
-        reportType: 'DAILY',
-        startDate: '2025-11-01',
-        endDate: '2025-11-20'
-      });
-      setCurrentReport(report);
-      return report;
-    } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '获取设备健康数据失败';
-      setError(errorMessage);
-      console.error('Health assessment error:', err);
-    } finally {
-      setLoading(false);
-    }
+  // ==================== 本地状态管理 ====================
+  const [error, setError] = useState<string | null>(null); // 错误信息
+  const [selectedId, setSelectedId] = useState<string | null>(null); // 用户当前选中的设备技术 ID (UUID)
+
+  // 评估时间范围状态（默认最近24小时）
+  const [assessmentDateRange, setAssessmentDateRange] = useState<DateRange | undefined>({
+    from: subDays(new Date(), 1),
+    to: new Date()
+  });
+
+  // ==================== Store 状态读取 ====================
+
+  /**
+   * 从 reports-store 读取健康评估数据（已合并 health-store 功能）
+   */
+  const {
+    systemHealthScores,
+    reports: historicalReports,
+    pagination,
+    scoresLoading,
+    loading: reportsLoading,
+    generating,
+    error: reportsStoreError,
+    fetchSystemHealthScores,
+    fetchReports,
+    generateReport,
+    downloadReport,
+  } = useReportsStore();
+
+  /**
+   * 从设备管理 Store 读取设备列表
+   */
+  const {
+    items: equipmentList,
+    loading: equipmentLoading,
+    ensureItemsLoaded
+  } = useEquipmentStore();
+
+  // ==================== 计算衍生状态 ====================
+
+  /**
+   * 获取所有设备的 ID 列表，用于批量获取评分
+   */
+  const equipmentIds = useMemo(() =>
+    equipmentList.map(item => item.deviceId),
+    [equipmentList]);
+
+  // 解构分页信息（用于列表组件）
+  const { page: currentPage, limit: pageSize, total: totalReports } = pagination;
+
+  // ==================== 事件处理函数 ====================
+
+  /**
+   * 系统健康卡片点击选择
+   *
+   * 功能：
+   * 用户点击系统健康卡片时，标记为选中状态（使用技术 ID）
+   *
+   * @param id - 设备技术 ID (UUID)
+   */
+  const handleSelectDevice = useCallback(
+    (id: string) => {
+      setSelectedId(id);
+      console.log('用户选中了设备 ID:', id);
+    },
+    []
+  );
+
+  /**
+   * 格式化日期为自定义字符串 (YYYY-MM-DD HH:mm:ss.SSS)
+   * 
+   * @param date - 日期对象
+   * @returns 格式化后的字符串
+   */
+  const formatDateToCustomString = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    const hours = String(date.getHours()).padStart(2, '0');
+    const minutes = String(date.getMinutes()).padStart(2, '0');
+    const seconds = String(date.getSeconds()).padStart(2, '0');
+
+    return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
   };
 
-  // 生成健康报告
-  const handleGenerateReport = async () => {
-    setLoading(true);
-    setError(null);
+  /**
+   * 翻页事件处理
+   *
+   * 功能：
+   * 用户翻页时，重新查询历史报告列表
+   *
+   * @param page - 目标页码（从 1 开始）
+   */
+  const handlePageChange = useCallback(async (page: number) => {
     try {
-      const result = await healthService.generateReport({
-        equipmentId: selectedEquipment,
-        reportType: 'WEEKLY',
-        startDate: '2025-11-14',
-        endDate: '2025-11-20'
-      });
-      console.log(`报告生成请求已提交: ${result.reportId}`);
-      // 刷新数据
-      await loadEquipmentHealth(selectedEquipment);
+      await fetchReports({ page });
+      console.log(`切换到第 ${page} 页`);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : '生成健康报告失败';
+      const errorMessage = err instanceof Error ? err.message : '加载历史报告失败';
       setError(errorMessage);
-      console.error('Report generation error:', err);
-    } finally {
-      setLoading(false);
+      console.error('加载历史报告失败:', err);
     }
-  };
+  }, [fetchReports]);
 
-  // 导出报告
-  const handleExportReport = async (reportId: string) => {
+  /**
+   * 筛选条件变化处理
+   * 
+   * @param filters - 新的筛选参数
+   */
+  const handleFilterChange = useCallback(async (filters: any) => {
     try {
-      const exportResult = await healthService.exportReport(reportId, ReportFormat.PDF, {
-        includeCharts: true,
-        includeRecommendations: true
+      await fetchReports(filters);
+      console.log('筛选条件已更新:', filters);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '执行筛选失败';
+      setError(errorMessage);
+    }
+  }, [fetchReports]);
+
+  /**
+   * 生成新健康报告
+   *
+   * 功能：
+   * 1. 弹出对话框让用户选择报告参数（设备、时间范围）
+   * 2. 调用 reports-store 生成报告
+   * 3. 刷新历史报告列表
+   *
+   * 注意：当前为简化实现，后续需要添加报告生成对话框
+   */
+  const handleGenerateReport = useCallback(async () => {
+    if (!selectedId) {
+      setError("请先从上方选择一个设备进行健康评估");
+      return;
+    }
+
+    if (!assessmentDateRange?.from || !assessmentDateRange?.to) {
+      setError("请先选择健康评估的时间范围");
+      return;
+    }
+
+    setError(null);
+
+    try {
+      // 评估请求参数
+      const startTime = assessmentDateRange.from;
+      const endTime = assessmentDateRange.to;
+
+      // 调用 reports-store 的 generateReportAction
+      // 使用自定义格式 YYYY-MM-DD HH:mm:ss.SSS
+      await generateReport({
+        reportType: 'EQUIPMENT_HEALTH',
+        startDate: formatDateToCustomString(startTime),
+        endDate: formatDateToCustomString(endTime),
+        equipmentIds: [selectedId],
+        exportFormat: 'PDF',
       });
-      // 下载报告文件
-      window.open(exportResult.downloadUrl);
+
+      console.log(`已成功触发设备评估请求，设备 ID: ${selectedId}`);
+
+      // 评估完成后不再手动触发 fetchReports，遵循“手动查询”原则，且 generateReport 内部已同步本地状态
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : '发起评估请求失败';
+      setError(errorMessage);
+      console.error('发起评估失败:', err);
+    }
+  }, [generateReport, selectedId, assessmentDateRange, formatDateToCustomString]);
+
+  /**
+   * 查看报告详情
+   *
+   * 功能：
+   * 导航至报告详情页面
+   *
+   * @param reportId - 报告 ID
+   */
+  const handleViewReport = useCallback(
+    (reportId: string) => {
+      // 详情现已改为在 HealthReportsList 内部通过弹窗展示，此处仅保留日志或执行其他非导航逻辑
+      console.log(`已点击查看历史报告详情: ${reportId}`);
+    },
+    []
+  );
+
+  /**
+   * 导出报告
+   *
+   * 功能：
+   * 调用 reports-store 下载报告文件
+   *
+   * @param reportId - 报告 ID
+   */
+  const handleExportReport = useCallback(async (reportId: string) => {
+    setError(null);
+
+    try {
+      await downloadReport(reportId);
+      console.log(`报告导出成功: ${reportId}`);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : '导出报告失败';
       setError(errorMessage);
-      console.error('Export error:', err);
+      console.error('导出报告失败:', err);
     }
-  };
+  }, [downloadReport]);
 
-  // 刷新数据
-  const handleRefresh = async () => {
-    setRefreshing(true);
-    try {
-      await loadEquipmentHealth(selectedEquipment);
-    } finally {
-      setRefreshing(false);
-    }
-  };
+  // ==================== 生命周期和副作用 ====================
 
-  // 组件初始化加载数据
+  /**
+   * 组件挂载时初始化数据（动态驱动模式）
+   * 
+   * 步骤：
+   * 1. 异步获取设备列表（Equipment List）
+   * 2. 获取设备列表成功后，基于设备 ID 批量获取最新健康评分
+   * 3. 同时初始化历史报告查询
+   */
   useEffect(() => {
-    loadEquipmentHealth(selectedEquipment);
-  }, [selectedEquipment]);
+    const initPageData = async () => {
+      try {
+        // 1. 异步获取设备列表
+        const response = await ensureItemsLoaded({ page: 1, pageSize: 20 });
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'healthy':
-        return <Badge className="bg-green-500/20 text-green-400 border-green-500">正常</Badge>;
-      case 'warning':
-        return <Badge className="bg-amber-500/20 text-amber-400 border-amber-500">警告</Badge>;
-      case 'critical':
-        return <Badge className="bg-red-500/20 text-red-400 border-red-500">严重</Badge>;
-      default:
-        return <Badge className="bg-slate-500/20 text-slate-400 border-slate-500">未知</Badge>;
+        // 2. 获取设备列表成功后，基于设备 ID 批量获取最新健康评分
+        if (response && response.items && response.items.length > 0) {
+          await fetchSystemHealthScores(response.items);
+        }
+
+        console.log('健康评估页面框架初始化成功');
+      } catch (err) {
+        console.error('健康评估页面初始化失败:', err);
+      }
+    };
+
+    initPageData();
+  }, [ensureItemsLoaded, fetchSystemHealthScores]);
+
+  /**
+   * 同步 reports-store 的错误到本地状态
+   */
+  useEffect(() => {
+    if (reportsStoreError) {
+      setError(reportsStoreError);
     }
-  };
+  }, [reportsStoreError]);
 
-  const getSeverityIcon = (severity: number) => {
-    switch (severity) {
-      case 3:
-        return <AlertCircle className="w-5 h-5 text-red-400" />;
-      case 2:
-        return <AlertTriangle className="w-5 h-5 text-amber-400" />;
-      default:
-        return <Info className="w-5 h-5 text-cyan-400" />;
-    }
-  };
-
-  const getSeverityColor = (severity: number) => {
-    switch (severity) {
-      case 3:
-        return 'text-red-400';
-      case 2:
-        return 'text-amber-400';
-      default:
-        return 'text-cyan-400';
-    }
-  };
-
-  const getScoreStatus = (score: number): 'normal' | 'warning' | 'critical' => {
-    if (score >= 80) return 'normal';
-    if (score >= 60) return 'warning';
-    return 'critical';
-  };
-
-  // 生成图表数据
-  const batterySOHData = generateMockSOHData();
-  const propulsionHealthData = generateMockHealthData();
-
-  // 使用模拟数据（在真实环境中将从API获取）
-  const deviceHealthList = mockDeviceHealthList;
-  const faultDiagnostics = mockFaultDiagnostics;
+  // ==================== 渲染 ====================
 
   return (
     <div className="min-h-full bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-6">
       <div className="max-w-7xl mx-auto space-y-6">
+        {/* 页面标题 */}
+        <div className="mb-4">
+          <h1 className="text-3xl font-bold text-slate-100">健康评估概览</h1>
+          <p className="text-slate-400 text-sm mt-2">
+            各核心系统的健康状况评估，健康报告和查询
+          </p>
+        </div>
+
         {/* 错误提示区域 */}
         {error && (
           <Card className="bg-red-900/20 border-red-700 p-4">
             <div className="flex items-center gap-3">
               <AlertCircle className="w-5 h-5 text-red-400" />
-              <div>
-                <h4 className="text-red-400 font-medium">健康评估错误</h4>
+              <div className="flex-1">
+                <h4 className="text-red-400 font-medium">操作失败</h4>
                 <p className="text-red-300 text-sm">{error}</p>
               </div>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={() => setError(null)}
-                className="ml-auto text-red-400 border-red-600 hover:bg-red-800"
+                className="text-red-400 border-red-600 hover:bg-red-800"
               >
                 关闭
               </Button>
             </div>
           </Card>
         )}
-        
-        {/* 加载状态指示 */}
-        {loading && (
-          <Card className="bg-blue-900/20 border-blue-700 p-4">
-            <div className="flex items-center gap-3">
-              <RefreshCw className="w-5 h-5 text-blue-400 animate-spin" />
-              <div>
-                <h4 className="text-blue-400 font-medium">正在加载健康数据...</h4>
-                <p className="text-blue-300 text-sm">请稍候，正在获取设备健康评估报告</p>
-              </div>
-            </div>
-          </Card>
-        )}
 
-        {/* Top Row - Overview Cards */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Overall System Health Score */}
-          <Card className="bg-slate-800/80 border-slate-700 p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-slate-100">整体系统健康评分</h3>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleRefresh}
-                disabled={refreshing}
-                className="text-slate-300 border-slate-600 hover:bg-slate-700"
-              >
-                <RefreshCw className={`w-3 h-3 mr-1 ${refreshing ? 'animate-spin' : ''}`} />
-                刷新
-              </Button>
-            </div>
-            <div className="flex justify-center">
-              <GaugeChart value={overallHealthScore} maxValue={100} label="" unit="%" size="large" status="normal" />
-            </div>
-          </Card>
 
-          {/* Battery SOH Trend */}
-          <Card className="bg-slate-800/80 border-slate-700 p-6">
-            <h3 className="text-slate-100 mb-6">电池SOH趋势</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={batterySOHData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="time" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" domain={[85, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #475569',
-                    borderRadius: '0.5rem',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="soh"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  name="SOH (%)"
-                  dot={{ fill: '#22c55e', r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
+        <Tabs defaultValue="assessment" className="w-full">
+          <TabsList className="bg-slate-800/50 border border-slate-700 p-1 mb-6">
+            <TabsTrigger value="assessment" className="data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+              <Activity className="w-4 h-4 mr-2" />
+              系统健康评估
+            </TabsTrigger>
+            <TabsTrigger value="query" className="data-[state=active]:bg-cyan-600 data-[state=active]:text-white">
+              <History className="w-4 h-4 mr-2" />
+              健康报告查询
+            </TabsTrigger>
+          </TabsList>
 
-          {/* Propulsion Health Trend */}
-          <Card className="bg-slate-800/80 border-slate-700 p-6">
-            <h3 className="text-slate-100 mb-6">推进健康指数趋势</h3>
-            <ResponsiveContainer width="100%" height={200}>
-              <LineChart data={propulsionHealthData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#475569" />
-                <XAxis dataKey="time" stroke="#94a3b8" />
-                <YAxis stroke="#94a3b8" domain={[80, 100]} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: '#1e293b',
-                    border: '1px solid #475569',
-                    borderRadius: '0.5rem',
-                  }}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="health"
-                  stroke="#22c55e"
-                  strokeWidth={2}
-                  name="健康指数"
-                  dot={{ fill: '#22c55e', r: 3 }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </Card>
-        </div>
-
-        {/* Device Health List */}
-        <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <h3 className="text-slate-100 mb-6">设备健康列表</h3>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-700">
-                  <th className="text-left py-3 px-3 text-slate-300 text-sm">设备名称</th>
-                  <th className="text-left py-3 px-3 text-slate-300 text-sm">整体健康评分</th>
-                  <th className="text-left py-3 px-3 text-slate-300 text-sm">上次评估时间</th>
-                  <th className="text-left py-3 px-3 text-slate-300 text-sm">状态</th>
-                  <th className="text-left py-3 px-3 text-slate-300 text-sm">操作</th>
-                </tr>
-              </thead>
-              <tbody>
-                {deviceHealthList.map((device) => (
-                  <tr key={device.id} className="border-b border-slate-700/50 hover:bg-slate-900/30">
-                    <td className="py-3 px-3 text-slate-300 text-sm">{device.name}</td>
-                    <td className="py-3 px-3">
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`text-sm ${
-                            device.score >= 80
-                              ? 'text-green-400'
-                              : device.score >= 60
-                              ? 'text-amber-400'
-                              : 'text-red-400'
-                          }`}
-                        >
-                          {device.score}%
-                        </span>
-                        <div className="w-24 h-2 bg-slate-700 rounded-full overflow-hidden">
-                          <div
-                            className={`h-full ${
-                              device.score >= 80
-                                ? 'bg-green-500'
-                                : device.score >= 60
-                                ? 'bg-amber-500'
-                                : 'bg-red-500'
-                            }`}
-                            style={{ width: `${device.score}%` }}
-                          ></div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="py-3 px-3 text-slate-400 text-sm">{device.lastAssessment}</td>
-                    <td className="py-3 px-3">{getStatusBadge(device.status)}</td>
-                    <td className="py-3 px-3">
-                      <div className="flex gap-2">
-                        <Button
-                          size="sm"
-                          className="bg-cyan-500 hover:bg-cyan-600 text-white"
-                          onClick={() => {
-                            setSelectedEquipment(device.id);
-                            loadEquipmentHealth(device.id);
-                          }}
-                        >
-                          <Eye className="w-3 h-3 mr-1" />
-                          详情
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-slate-300 border-slate-600 hover:bg-slate-700"
-                          onClick={() => handleExportReport(device.id)}
-                        >
-                          <Download className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          
-          {/* 生成报告按钮 */}
-          <div className="mt-4 flex justify-end">
-            <Button
-              onClick={handleGenerateReport}
-              disabled={loading}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              <Plus className="w-3 h-3 mr-1" />
-              {loading ? '生成中...' : '生成新报告'}
-            </Button>
-          </div>
-        </Card>
-
-        {/* Recent Fault Diagnostics */}
-        <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <h3 className="text-slate-100 mb-6">近期故障诊断与警告</h3>
-          <div className="space-y-3">
-            {faultDiagnostics.map((fault) => (
-              <div
-                key={fault.id}
-                className="p-4 bg-slate-900/50 rounded-lg border border-slate-700 hover:bg-slate-900 transition-colors"
-              >
-                <div className="flex items-start gap-3">
-                  {getSeverityIcon(fault.severity)}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-slate-300">{fault.device}</span>
-                      <Badge
-                        className={`text-xs ${
-                          fault.severity === 3
-                            ? 'bg-red-500/20 text-red-400 border-red-500'
-                            : fault.severity === 2
-                            ? 'bg-amber-500/20 text-amber-400 border-amber-500'
-                            : 'bg-cyan-500/20 text-cyan-400 border-cyan-500'
-                        }`}
-                      >
-                        {fault.severity === 3 ? '3级严重' : fault.severity === 2 ? '2级警告' : '1级提示'}
-                      </Badge>
-                    </div>
-                    <p className={`${getSeverityColor(fault.severity)} mb-2`}>
-                      {fault.description}
-                    </p>
-                    <p className="text-slate-400 text-sm mb-1">
-                      <span className="text-slate-500">建议操作：</span>
-                      {fault.recommendation}
-                    </p>
-                    <p className="text-slate-500 text-xs">{fault.timestamp}</p>
-                  </div>
+          {/* 标签页 1：系统健康评估 */}
+          <TabsContent value="assessment" className="space-y-6 outline-none">
+            <Card className="bg-slate-800/40 border-slate-700 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                  <Calendar className="w-5 h-5 text-cyan-400" />
+                  <span className="text-slate-200 font-medium">评估时间范围:</span>
+                  <DateRangePicker
+                    value={assessmentDateRange}
+                    onChange={setAssessmentDateRange}
+                    className="w-[300px]"
+                  />
+                  <p className="text-slate-500 text-xs italic ml-2">
+                    * 系统将分析选定时间段内的运行指标
+                  </p>
                 </div>
+
+                <Button
+                  onClick={handleGenerateReport}
+                  disabled={generating || equipmentLoading}
+                  className="bg-cyan-600 hover:bg-cyan-700 text-white shadow-lg shadow-cyan-900/20 px-8"
+                >
+                  {generating ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Activity className="w-4 h-4 mr-2" />
+                  )}
+                  开始健康评估
+                </Button>
               </div>
-            ))}
-          </div>
-        </Card>
+            </Card>
+
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h2 className="text-xl font-semibold text-slate-100 flex items-center gap-2">
+                  <div className="w-1 h-6 bg-cyan-500 rounded-full" />
+                  请选择评估对象
+                </h2>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                {(equipmentLoading || scoresLoading) && equipmentList.length === 0 ? (
+                  [...Array(8)].map((_, i) => (
+                    <div key={i} className="h-32 bg-slate-800/50 animate-pulse rounded-xl" />
+                  ))
+                ) : (
+                  equipmentList.map((item) => {
+                    const healthScore = systemHealthScores[item.id]; // 🔴 统一使用 UUID (id) 进行匹配查找
+                    const IconComponent = getIconByDeviceType(item.deviceType);
+
+                    return (
+                      <SystemHealthCard
+                        key={item.id}
+                        systemId={item.id} // 修改为 UUID
+                        systemName={item.deviceName}
+                        icon={IconComponent}
+                        healthScore={healthScore?.score}
+                        grade={healthScore?.grade}
+                        activeAlarmsCount={0}
+                        isSelected={selectedId === item.id}
+                        onSelect={() => handleSelectDevice(item.id)}
+                        loading={scoresLoading}
+                      />
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </TabsContent>
+
+          {/* 标签页 2：健康报告查询 */}
+          <TabsContent value="query" className="outline-none">
+            <HealthReportsList
+              reports={historicalReports}
+              total={totalReports}
+              currentPage={currentPage}
+              pageSize={pageSize}
+              loading={reportsLoading || generating}
+              equipmentItems={equipmentList}
+              onPageChange={handlePageChange}
+              onFilterChange={handleFilterChange}
+              onViewReport={handleViewReport}
+              onExportReport={handleExportReport}
+            />
+          </TabsContent>
+        </Tabs>
       </div>
     </div>
   );

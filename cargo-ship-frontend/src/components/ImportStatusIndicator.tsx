@@ -17,8 +17,18 @@ import {
   Eye
 } from 'lucide-react';
 import { useImport } from '../stores/import-store';
-import { ImportStatus, ImportStatistics } from '../types/import';
-import { DataQuality } from '../types/equipment';
+
+// 从后端 API 客户端导入基础类型
+import { ImportRecord } from '@/services/api';
+
+// 从 import-store 导入前端业务类型
+import type { ImportStatistics } from '../stores/import-store';
+
+// 从监控存储导入数据质量枚举（使用后端 API 定义）
+import { DataQuality } from '../stores/monitoring-store';
+
+// 类型别名（兼容性）
+const ImportStatus = ImportRecord.status;
 
 // 导入状态映射配置
 const IMPORT_STATUS_CONFIG = {
@@ -62,9 +72,14 @@ const IMPORT_STATUS_CONFIG = {
 /**
  * 单个导入记录状态组件
  */
-function ImportRecordStatus({ record }: { record: any }) {
+function ImportRecordStatus({ record }: { record: ImportRecord }) {
   const statusConfig = IMPORT_STATUS_CONFIG[record.status as keyof typeof IMPORT_STATUS_CONFIG] || IMPORT_STATUS_CONFIG.pending;
   const StatusIcon = statusConfig.icon;
+
+  // 计算成功率
+  const successRate = record.totalRows > 0
+    ? ((record.successRows / record.totalRows) * 100).toFixed(1)
+    : '0.0';
 
   return (
     <div className={`flex items-center gap-2 p-2 rounded-lg ${statusConfig.bgColor} ${statusConfig.borderColor} border`}>
@@ -74,7 +89,7 @@ function ImportRecordStatus({ record }: { record: any }) {
         <div className="text-xs text-slate-500">{new Date(record.createdAt).toLocaleString('zh-CN')}</div>
       </div>
       <div className="w-12">
-        <div className="text-xs text-slate-400">{record.successRate?.toFixed(1) || 0}%</div>
+        <div className="text-xs text-slate-400">{successRate}%</div>
       </div>
     </div>
   );
@@ -302,21 +317,28 @@ export function ImportStatusIndicator({
         <div className="mb-4">
           <h4 className="text-slate-300 text-sm mb-2">活跃任务</h4>
           <div className="space-y-2">
-            {activeTasks.map((task) => (
-              <div key={task.id} className="bg-slate-900/50 rounded-lg p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-slate-300 text-sm font-medium">{task.fileName}</span>
-                  <span className="text-slate-400 text-xs">处理中</span>
+            {activeTasks.map((task) => {
+              // 计算成功率
+              const successRate = task.totalRows > 0
+                ? Math.round((task.successRows / task.totalRows) * 100)
+                : 0;
+
+              return (
+                <div key={task.id} className="bg-slate-900/50 rounded-lg p-3">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-slate-300 text-sm font-medium">{task.fileName}</span>
+                    <span className="text-slate-400 text-xs">处理中</span>
+                  </div>
+                  <Progress
+                    value={successRate}
+                    className="h-2"
+                  />
+                  <div className="text-xs text-slate-500 mt-1">
+                    {successRate}% 完成
+                  </div>
                 </div>
-                <Progress
-                  value={task.successRate || 0}
-                  className="h-2"
-                />
-                <div className="text-xs text-slate-500 mt-1">
-                  {Math.round(task.successRate || 0)}% 完成
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

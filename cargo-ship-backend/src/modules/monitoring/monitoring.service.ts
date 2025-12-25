@@ -18,6 +18,10 @@ import {
   QueryTimeSeriesDataDto,
 } from './dto';
 import { DataQualityService } from './data-quality.service';
+import { EquipmentService } from '../equipment/equipment.service';
+import { AlarmService } from '../alarm/alarm.service';
+import { AlarmPushService } from '../alarm/alarm-push.service';
+import { MonitoringPushService } from './monitoring-push.service';
 
 /**
  * 批量上报结果接口
@@ -59,6 +63,9 @@ export interface DataStatistics {
  * 监测数据服务
  *
  * 提供时序监测数据的存储、查询、统计等功能
+ * 集成监测点校验:数据保存前校验监测点有效性并自动补全单位
+ * 集成告警评估:数据保存后自动评估是否触发告警
+ * 集成实时推送:数据保存后实时推送给订阅用户
  */
 @Injectable()
 export class MonitoringService {
@@ -71,6 +78,10 @@ export class MonitoringService {
     private readonly equipmentRepository: Repository<Equipment>,
     private readonly dataSource: DataSource,
     private readonly dataQualityService: DataQualityService,
+    private readonly equipmentService: EquipmentService,
+    private readonly alarmService: AlarmService,
+    private readonly alarmPushService: AlarmPushService,
+    private readonly monitoringPushService: MonitoringPushService,
   ) {}
 
   /**
@@ -91,11 +102,39 @@ export class MonitoringService {
       throw new NotFoundException(`设备不存在: ${createDto.equipmentId}`);
     }
 
-    // 2. 如果未提供单位，使用默认单位
-    const unit =
-      createDto.unit || TimeSeriesData.getStandardUnit(createDto.metricType);
+    // 2. 监测点校验和单位自动补全（如果提供了监测点）
+    let unit = createDto.unit;
 
-    // 3. 数据质量验证
+    if (createDto.monitoringPoint) {
+      // 校验监测点有效性和类型一致性
+      const monitoringPoint =
+        await this.equipmentService.validateMonitoringPoint(
+          createDto.equipmentId,
+          createDto.monitoringPoint,
+          createDto.metricType,
+        );
+
+      // 如果未提供单位，从监测点元数据中自动补全
+      if (!unit && monitoringPoint.hasUnit()) {
+        unit = monitoringPoint.unit;
+        this.logger.debug(
+          `自动补全监测点 '${createDto.monitoringPoint}' 的单位: ${unit}`,
+        );
+      }
+    } else {
+      // 向后兼容：如果未提供监测点，记录警告但继续处理
+      this.logger.warn(
+        `数据缺失监测点信息: 设备=${createDto.equipmentId}, 指标=${createDto.metricType}。` +
+          `建议补充监测点以提高数据质量和告警准确性。`,
+      );
+    }
+
+    // 3. 如果仍未提供单位，使用默认单位
+    if (!unit) {
+      unit = TimeSeriesData.getStandardUnit(createDto.metricType);
+    }
+
+    // 4. 数据质量验证
     const qualityCheck = this.dataQualityService.checkDataQuality(
       createDto.metricType,
       createDto.value,
@@ -103,30 +142,60 @@ export class MonitoringService {
       unit,
     );
 
-    // 4. 如果未提供质量标记，使用验证结果的质量等级
+    // 5. 如果未提供质量标记，使用验证结果的质量等级
     const quality = createDto.quality || qualityCheck.quality;
 
-    // 5. 如果未提供数据来源，使用默认值
+    // 6. 如果未提供数据来源，使用默认值
     const source = createDto.source || DataSourceEnum.SENSOR_UPLOAD;
 
-    // 6. 创建时序数据实体
+    // 7. 创建时序数据实体（包含监测点信息）
     const timeSeriesData = this.timeSeriesDataRepository.create({
       equipmentId: createDto.equipmentId,
-      timestamp: createDto.timestamp,
+      timestamp:
+        typeof createDto.timestamp === 'string'
+          ? new Date(createDto.timestamp)
+          : createDto.timestamp,
       metricType: createDto.metricType,
+      monitoringPoint: createDto.monitoringPoint, // 添加监测点字段
       value: createDto.value,
       unit,
       quality,
       source,
     });
 
-    // 6. 保存到数据库
+    // 8. 保存到数据库
     try {
       const savedData =
         await this.timeSeriesDataRepository.save(timeSeriesData);
-      this.logger.log(
-        `成功接收监测数据: 设备=${createDto.equipmentId}, 指标=${createDto.metricType}, 值=${createDto.value}`,
-      );
+
+      // 日志中包含监测点信息
+      const logMsg = createDto.monitoringPoint
+        ? `成功接收监测数据: 设备=${createDto.equipmentId}, 监测点=${createDto.monitoringPoint}, 指标=${createDto.metricType}, 值=${createDto.value}`
+        : `成功接收监测数据: 设备=${createDto.equipmentId}, 指标=${createDto.metricType}, 值=${createDto.value}`;
+
+      this.logger.log(logMsg);
+
+      // 9. 异步推送监测数据到 WebSocket
+      // 使用 void 操作符明确标记为故意不等待的 Promise
+      void this.monitoringPushService.pushNewData(savedData);
+
+      // 10. 异步评估是否触发告警
+      // 使用 void 操作符明确标记为故意不等待的 Promise
+      void Promise.resolve().then(async () => {
+        try {
+          const alarms = await this.alarmService.evaluateThresholds(savedData);
+
+          // 如果触发了告警,通过 WebSocket 推送
+          if (alarms.length > 0) {
+            for (const alarm of alarms) {
+              await this.alarmPushService.pushUpsertAlarm(alarm);
+            }
+          }
+        } catch (error) {
+          this.logger.error(`告警评估失败: ${error.message}`, error.stack);
+        }
+      });
+
       return savedData;
     } catch (error) {
       this.logger.error(`保存监测数据失败: ${error.message}`, error.stack);
@@ -139,6 +208,7 @@ export class MonitoringService {
    *
    * 使用事务确保数据一致性
    * 支持部分失败（记录失败详情，成功的数据继续保存）
+   * 集成监测点批量校验：使用缓存优化性能
    *
    * @param batchDto 批量数据DTO
    * @returns 批量上报结果
@@ -155,7 +225,47 @@ export class MonitoringService {
       throw new NotFoundException(`设备不存在: ${batchDto.equipmentId}`);
     }
 
-    // 2. 初始化结果统计
+    // 2. 收集所有唯一的监测点名称用于批量校验
+    const uniqueMonitoringPoints = new Set<string>();
+    for (const item of batchDto.data) {
+      if (item.monitoringPoint) {
+        uniqueMonitoringPoints.add(item.monitoringPoint);
+      }
+    }
+
+    // 3. 批量校验监测点（使用缓存优化性能）
+    const monitoringPointCache = new Map<string, any>();
+    if (uniqueMonitoringPoints.size > 0) {
+      try {
+        const validationResults =
+          await this.equipmentService.validateMonitoringPointsBatch(
+            batchDto.equipmentId,
+            Array.from(uniqueMonitoringPoints),
+          );
+
+        // 缓存校验结果
+        for (const mp of validationResults) {
+          monitoringPointCache.set(mp.pointName, mp);
+        }
+
+        this.logger.debug(
+          `批量校验监测点完成: 设备=${batchDto.equipmentId}, 监测点数量=${uniqueMonitoringPoints.size}`,
+        );
+      } catch (error) {
+        // 如果批量校验失败，记录错误但继续处理（向后兼容）
+        this.logger.error(
+          `批量校验监测点失败: ${error.message}。将在单条处理时进行校验。`,
+        );
+      }
+    } else {
+      // 向后兼容：如果批量数据中没有监测点信息，记录警告
+      this.logger.warn(
+        `批量数据缺失监测点信息: 设备=${batchDto.equipmentId}, 数据量=${batchDto.data.length}。` +
+          `建议补充监测点以提高数据质量和告警准确性。`,
+      );
+    }
+
+    // 4. 初始化结果统计
     const result: BatchUploadResult = {
       totalCount: batchDto.data.length,
       successCount: 0,
@@ -163,10 +273,12 @@ export class MonitoringService {
       errors: [],
     };
 
-    // 3. 使用事务批量插入数据
+    // 5. 使用事务批量插入数据
     const queryRunner = this.dataSource.createQueryRunner();
     await queryRunner.connect();
     await queryRunner.startTransaction();
+
+    const savedEntities: TimeSeriesData[] = []; // 收集已保存的实体
 
     try {
       // 批量处理数据
@@ -174,26 +286,74 @@ export class MonitoringService {
         const item = batchDto.data[i];
 
         try {
-          // 如果未提供单位，使用默认单位
-          const unit =
-            item.unit || TimeSeriesData.getStandardUnit(item.metricType);
+          // 确保时间戳是 Date 对象
+          const timestamp =
+            typeof item.timestamp === 'string'
+              ? new Date(item.timestamp)
+              : item.timestamp;
+
+          let unit = item.unit;
+
+          // 如果提供了监测点，进行校验和单位自动补全
+          if (item.monitoringPoint) {
+            const cachedMonitoringPoint = monitoringPointCache.get(
+              item.monitoringPoint,
+            );
+
+            if (cachedMonitoringPoint) {
+              // 校验指标类型一致性
+              if (
+                item.metricType &&
+                cachedMonitoringPoint.metricType !== item.metricType
+              ) {
+                throw new BadRequestException(
+                  `监测点 '${item.monitoringPoint}' 的指标类型不匹配: ` +
+                    `期望 ${cachedMonitoringPoint.metricType}, 实际 ${item.metricType}`,
+                );
+              }
+
+              // 如果未提供单位，从监测点元数据中自动补全
+              if (!unit && cachedMonitoringPoint.hasUnit()) {
+                unit = cachedMonitoringPoint.unit;
+              }
+            } else {
+              // 缓存中不存在（批量校验失败或校验时不存在），单独校验
+              const monitoringPoint =
+                await this.equipmentService.validateMonitoringPoint(
+                  batchDto.equipmentId,
+                  item.monitoringPoint,
+                  item.metricType,
+                );
+
+              // 如果未提供单位，从监测点元数据中自动补全
+              if (!unit && monitoringPoint.hasUnit()) {
+                unit = monitoringPoint.unit;
+              }
+            }
+          }
+
+          // 如果仍未提供单位，使用默认单位
+          if (!unit) {
+            unit = TimeSeriesData.getStandardUnit(item.metricType);
+          }
 
           // 数据质量验证
           const qualityCheck = this.dataQualityService.checkDataQuality(
             item.metricType,
             item.value,
-            item.timestamp,
+            timestamp,
             unit,
           );
 
           // 如果未提供质量标记，使用验证结果的质量等级
           const quality = item.quality || qualityCheck.quality;
 
-          // 创建时序数据实体
+          // 创建时序数据实体（包含监测点信息）
           const timeSeriesData = this.timeSeriesDataRepository.create({
             equipmentId: batchDto.equipmentId,
-            timestamp: item.timestamp,
+            timestamp: timestamp,
             metricType: item.metricType,
+            monitoringPoint: item.monitoringPoint, // 添加监测点字段
             value: item.value,
             unit,
             quality,
@@ -201,7 +361,8 @@ export class MonitoringService {
           });
 
           // 保存数据
-          await queryRunner.manager.save(timeSeriesData);
+          const saved = await queryRunner.manager.save(timeSeriesData);
+          savedEntities.push(saved); // 收集成功保存的实体
           result.successCount++;
         } catch (error) {
           // 记录失败详情
@@ -221,6 +382,16 @@ export class MonitoringService {
         `批量接收监测数据完成: 总数=${result.totalCount}, 成功=${result.successCount}, 失败=${result.failedCount}`,
       );
 
+      // ========== 新增: 异步告警评估 (事务外执行) ==========
+      if (savedEntities.length > 0) {
+        void this.evaluateBatchAlarms(savedEntities);
+      }
+
+      // ========== 新增: 异步数据推送 (事务外执行) ==========
+      if (savedEntities.length > 0) {
+        void this.monitoringPushService.pushBatchData(savedEntities);
+      }
+
       return result;
     } catch (error) {
       // 回滚事务
@@ -239,7 +410,7 @@ export class MonitoringService {
   /**
    * 查询时序监测数据
    *
-   * 支持按设备、指标类型、时间范围查询
+   * 支持按设备、指标类型、监测点、时间范围查询
    * 支持分页查询
    *
    * @param queryDto 查询条件DTO
@@ -280,6 +451,13 @@ export class MonitoringService {
     if (queryDto.metricType) {
       queryBuilder.andWhere('data.metricType = :metricType', {
         metricType: queryDto.metricType,
+      });
+    }
+
+    // 如果指定了监测点，添加过滤条件（新增）
+    if (queryDto.monitoringPoint) {
+      queryBuilder.andWhere('data.monitoringPoint = :monitoringPoint', {
+        monitoringPoint: queryDto.monitoringPoint,
       });
     }
 
@@ -380,5 +558,49 @@ export class MonitoringService {
       avgValue: parseFloat(result.avgValue),
       unit: result.unit || TimeSeriesData.getStandardUnit(metricType),
     };
+  }
+
+  /**
+   * 批量评估告警 (异步执行，不阻塞响应)
+   *
+   * 用于批量上报场景的告警评估
+   * - 采用"最大努力"模式：单条失败不影响其他数据
+   * - 异步执行，不阻塞 API 响应
+   *
+   * @param dataList 时序数据列表
+   */
+  private async evaluateBatchAlarms(dataList: TimeSeriesData[]): Promise<void> {
+    this.logger.log(`开始对 ${dataList.length} 条批量上报数据进行告警评估...`);
+
+    let evaluatedCount = 0;
+    let triggeredCount = 0;
+    let failedCount = 0;
+
+    for (const data of dataList) {
+      try {
+        // 调用 AlarmService 的阈值评估方法
+        const alarms = await this.alarmService.evaluateThresholds(data);
+        evaluatedCount++;
+
+        if (alarms.length > 0) {
+          triggeredCount += alarms.length;
+
+          // 逐条推送告警
+          for (const alarm of alarms) {
+            await this.alarmPushService.pushUpsertAlarm(alarm);
+          }
+        }
+      } catch (error) {
+        failedCount++;
+        this.logger.warn(
+          `批量数据第 ${evaluatedCount + failedCount} 条告警评估失败: 设备=${data.equipmentId}, 监测点=${data.monitoringPoint}, 错误=${error.message}`,
+        );
+      }
+    }
+
+    this.logger.log(
+      `批量上报告警评估完成: 总数据=${dataList.length}, 成功评估=${evaluatedCount}, ` +
+        `触发告警=${triggeredCount}, 评估失败=${failedCount}`,
+    );
   }
 }

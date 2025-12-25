@@ -16,6 +16,7 @@ import {
   ManyToMany,
   Index,
 } from 'typeorm';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Role } from './role.entity';
 
 /**
@@ -111,6 +112,11 @@ export class Permission {
    * 权限唯一标识符
    * 使用UUID v4格式，自动生成
    */
+  @ApiProperty({
+    description: '权限唯一标识符（UUID格式）',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    type: String,
+  })
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -122,6 +128,12 @@ export class Permission {
    * - 全局唯一
    * - 格式通常为：resource:action（如：device:create）
    */
+  @ApiProperty({
+    description: '权限名称（全局唯一，格式：resource:action）',
+    example: 'device:create',
+    type: String,
+    maxLength: 100,
+  })
   @Column({ type: 'varchar', length: 100, unique: true })
   name: string;
 
@@ -132,6 +144,11 @@ export class Permission {
    * - 使用PermissionResource枚举值
    * - 与action组合形成完整权限
    */
+  @ApiProperty({
+    description: '权限控制的资源类型',
+    enum: PermissionResource,
+    example: PermissionResource.DEVICE,
+  })
   @Column({
     type: 'enum',
     enum: PermissionResource,
@@ -145,6 +162,11 @@ export class Permission {
    * - 使用PermissionAction枚举值
    * - 与resource组合形成完整权限
    */
+  @ApiProperty({
+    description: '权限允许的操作类型',
+    enum: PermissionAction,
+    example: PermissionAction.CREATE,
+  })
   @Column({
     type: 'enum',
     enum: PermissionAction,
@@ -159,6 +181,12 @@ export class Permission {
    * - 可选字段（nullable）
    * - 用于说明权限的用途和范围
    */
+  @ApiPropertyOptional({
+    description: '权限描述，说明权限的用途和范围',
+    example: '创建新设备的权限',
+    type: String,
+    maxLength: 255,
+  })
   @Column({ type: 'varchar', length: 255, nullable: true })
   description: string;
 
@@ -170,6 +198,12 @@ export class Permission {
    * - false: 自定义权限，可以修改和删除
    * - 默认值：false
    */
+  @ApiProperty({
+    description: '是否为系统权限（系统权限不可删除）',
+    example: true,
+    type: Boolean,
+    default: false,
+  })
   @Column({ name: 'is_system', type: 'boolean', default: false })
   isSystem: boolean;
 
@@ -180,6 +214,10 @@ export class Permission {
    * - 通过role_permissions中间表关联
    * - 反向关系（由Role实体维护）
    */
+  @ApiPropertyOptional({
+    description: '拥有此权限的角色列表',
+    type: () => [Role],
+  })
   @ManyToMany(() => Role, (role) => role.permissions)
   roles: Role[];
 
@@ -187,6 +225,11 @@ export class Permission {
    * 记录创建时间
    * 自动设置为首次保存时的时间戳
    */
+  @ApiProperty({
+    description: '记录创建时间',
+    example: '2025-01-01T10:00:00.000Z',
+    type: Date,
+  })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 
@@ -194,6 +237,11 @@ export class Permission {
    * 记录最后更新时间
    * 每次更新时自动更新为当前时间戳
    */
+  @ApiProperty({
+    description: '记录最后更新时间',
+    example: '2025-01-02T15:30:00.000Z',
+    type: Date,
+  })
   @UpdateDateColumn({ name: 'updated_at' })
   updatedAt: Date;
 }

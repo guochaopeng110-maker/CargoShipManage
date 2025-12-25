@@ -61,7 +61,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog'; 
 import { Alert, AlertDescription } from './ui/alert'; // 警告提示组件
 
 // 设备相关类型和接口导入
-import { Equipment } from '../types/equipment'; // 设备实体类型
+// 从设备存储导入前端业务类型
+import type { Equipment } from '../stores/equipment-store'; // 设备实体类型
 
 // 维护历史记录相关类型定义
 interface MaintenanceRecord {
@@ -86,7 +87,7 @@ interface MaintenanceRecord {
 }
 
 // 设备管理Store状态管理
-import { useEquipment } from '../stores/equipment-store';
+import { useEquipmentStore } from '../stores/equipment-store';
 
 /**
  * 维护历史页面主组件
@@ -108,8 +109,8 @@ export function MaintenanceHistoryPage() {
     items: equipmentList,           // 设备列表数据
     loading: equipmentLoading,       // 设备加载状态
     error: equipmentError,           // 设备错误信息
-    fetchEquipmentList,             // 获取设备列表
-  } = useEquipment();
+    ensureItemsLoaded,             // 确保设备列表已加载
+  } = useEquipmentStore();
 
   // 组件本地状态管理
   const [records, setRecords] = useState<MaintenanceRecord[]>([]); // 维护历史记录列表
@@ -127,9 +128,9 @@ export function MaintenanceHistoryPage() {
    * 在组件挂载时获取设备列表和维护历史记录
    */
   useEffect(() => {
-    // 获取设备列表
-    fetchEquipmentList().catch(console.error);
-    
+    // 确保设备列表已加载 (优先使用缓存)
+    ensureItemsLoaded().catch(console.error);
+
     // 加载维护历史记录（这里模拟API调用）
     loadMaintenanceRecords().catch(console.error);
   }, []);
@@ -141,7 +142,7 @@ export function MaintenanceHistoryPage() {
   const loadMaintenanceRecords = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // 模拟API调用 - 在实际项目中这里会调用维护历史服务API
       const mockRecords: MaintenanceRecord[] = [
@@ -302,7 +303,7 @@ export function MaintenanceHistoryPage() {
           updatedAt: Date.now() - 518400000,
         },
       ];
-      
+
       setRecords(mockRecords);
     } catch (error) {
       console.error('加载维护历史记录失败:', error);
@@ -385,7 +386,7 @@ export function MaintenanceHistoryPage() {
       '实际时长': record.actualDuration ? `${record.actualDuration}h` : '-',
       '备注': record.notes,
     }));
-    
+
     console.log('导出维护历史记录:', dataToExport);
     alert('维护历史记录导出功能开发中...');
   };
@@ -403,18 +404,18 @@ export function MaintenanceHistoryPage() {
       (record.issuesFound && record.issuesFound.some(issue =>
         issue.toLowerCase().includes(searchTerm.toLowerCase())
       ));
-    
+
     // 设备筛选条件匹配
     const matchesDevice = filterDevice === 'all' || record.deviceId === filterDevice;
-    
+
     // 结果筛选条件匹配
     const matchesResult = filterResult === 'all' || record.result === filterResult;
-    
+
     // 日期范围筛选条件匹配
     const matchesDateRange = (() => {
       const recordDate = new Date(record.completedDate);
       const now = new Date();
-      
+
       switch (filterDateRange) {
         case 'week':
           const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
@@ -433,7 +434,7 @@ export function MaintenanceHistoryPage() {
           return true;
       }
     })();
-    
+
     return matchesSearch && matchesDevice && matchesResult && matchesDateRange;
   });
 
@@ -447,7 +448,7 @@ export function MaintenanceHistoryPage() {
     const failed = records.filter(r => r.result === 'failed').length;
     const totalCost = records.reduce((sum, r) => sum + (r.cost || 0), 0);
     const totalDuration = records.reduce((sum, r) => sum + (r.actualDuration || 0), 0);
-    
+
     return { total, success, partial, failed, totalCost, totalDuration };
   };
 
@@ -471,7 +472,7 @@ export function MaintenanceHistoryPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            
+
             {/* 刷新按钮 */}
             <Button
               onClick={handleRefresh}
@@ -483,7 +484,7 @@ export function MaintenanceHistoryPage() {
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               刷新
             </Button>
-            
+
             {/* 导出按钮 */}
             <Button
               onClick={handleExport}
@@ -551,7 +552,7 @@ export function MaintenanceHistoryPage() {
                 className="pl-10 bg-slate-900/50 border-slate-600 text-slate-100 placeholder:text-slate-500"
               />
             </div>
-            
+
             {/* 设备筛选 */}
             <Select value={filterDevice} onValueChange={setFilterDevice}>
               <SelectTrigger className="w-48 bg-slate-900/50 border-slate-600 text-slate-100">
@@ -629,7 +630,7 @@ export function MaintenanceHistoryPage() {
               </SelectContent>
             </Select>
           </div>
-          
+
           {/* 筛选结果显示 */}
           <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
             <span>
@@ -753,7 +754,7 @@ export function MaintenanceHistoryPage() {
                 维护记录详情 - {selectedRecord?.taskName}
               </DialogTitle>
             </DialogHeader>
-            
+
             {selectedRecord && (
               <div className="space-y-6">
                 {/* 基本信息 */}

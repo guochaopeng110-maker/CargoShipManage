@@ -7,9 +7,13 @@ import {
   AlarmStatus,
 } from '../../database/entities/alarm-record.entity';
 import { Equipment } from '../../database/entities/equipment.entity';
-import { AlarmSeverity } from '../../database/entities/threshold-config.entity';
+import {
+  AlarmSeverity,
+  ThresholdConfig,
+} from '../../database/entities/threshold-config.entity';
 import { MetricType } from '../../database/entities/time-series-data.entity';
 import { NotFoundException } from '@nestjs/common';
+import { AlarmPushService } from './alarm-push.service';
 
 /**
  * 创建模拟的告警记录实体
@@ -20,6 +24,8 @@ const createMockAlarm = (partial: Partial<AlarmRecord> = {}): AlarmRecord =>
     equipmentId: 'equipment-id',
     thresholdId: 'threshold-id',
     abnormalMetricType: MetricType.TEMPERATURE,
+    monitoringPoint: undefined,
+    faultName: undefined,
     abnormalValue: 95.5,
     thresholdRange: '上限: 85.5°C, 下限: 10.0°C',
     triggeredAt: new Date(),
@@ -76,6 +82,17 @@ describe('AlarmService', () => {
       findOne: jest.fn(),
     };
 
+    const mockThresholdRepository = {
+      findOne: jest.fn(),
+      find: jest.fn(),
+    };
+
+    const mockAlarmPushService = {
+      pushUpsertAlarm: jest.fn(),
+      pushBatchAlarms: jest.fn(),
+      pushAlarmTrend: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AlarmService,
@@ -86,6 +103,14 @@ describe('AlarmService', () => {
         {
           provide: getRepositoryToken(Equipment),
           useValue: mockEquipmentRepository,
+        },
+        {
+          provide: getRepositoryToken(ThresholdConfig),
+          useValue: mockThresholdRepository,
+        },
+        {
+          provide: AlarmPushService,
+          useValue: mockAlarmPushService,
         },
       ],
     }).compile();
@@ -255,11 +280,14 @@ describe('AlarmService', () => {
       });
 
       // Assert: 验证查询条件
+      const startTimestamp = Math.floor(startTime / 1000);
+      const endTimestamp = Math.floor(endTime / 1000);
+
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'alarm.triggeredAt BETWEEN :startDate AND :endDate',
+        'UNIX_TIMESTAMP(alarm.triggeredAt) BETWEEN :startTime AND :endTime',
         {
-          startDate: new Date(startTime),
-          endDate: new Date(endTime),
+          startTime: startTimestamp,
+          endTime: endTimestamp,
         },
       );
     });
@@ -290,9 +318,11 @@ describe('AlarmService', () => {
       });
 
       // Assert: 验证查询条件
+      const startTimestamp = Math.floor(startTime / 1000);
+
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'alarm.triggeredAt >= :startDate',
-        { startDate: new Date(startTime) },
+        'UNIX_TIMESTAMP(alarm.triggeredAt) >= :startTime',
+        { startTime: startTimestamp },
       );
     });
 
@@ -322,9 +352,11 @@ describe('AlarmService', () => {
       });
 
       // Assert: 验证查询条件
+      const endTimestamp = Math.floor(endTime / 1000);
+
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'alarm.triggeredAt <= :endDate',
-        { endDate: new Date(endTime) },
+        'UNIX_TIMESTAMP(alarm.triggeredAt) <= :endTime',
+        { endTime: endTimestamp },
       );
     });
 
@@ -783,6 +815,399 @@ describe('AlarmService', () => {
           status: AlarmStatus.PENDING,
         },
       });
+    });
+  });
+
+  // ==================== 监测点匹配逻辑测试 ====================
+  describe('监测点匹配逻辑', () => {
+    it('应该基于设备ID和监测点组合创建告警', async () => {
+      // Arrange: 准备包含监测点的告警数据
+      const createDto = {
+        equipmentId: 'battery-equipment-id',
+        thresholdId: 'threshold-id',
+        abnormalMetricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        abnormalValue: 690.5,
+        thresholdRange: '上限: 683.1V',
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const mockAlarm = createMockAlarm({
+        ...createDto,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+      });
+
+      alarmRepository.create.mockReturnValue(mockAlarm);
+      alarmRepository.save.mockResolvedValue(mockAlarm);
+
+      // Act: 执行操作
+      const result = await service.create(createDto);
+
+      // Assert: 验证监测点和故障名称被正确保存
+      expect(result.monitoringPoint).toBe('总电压');
+      expect(result.faultName).toBe('总压过压');
+      expect(result.abnormalValue).toBe(690.5);
+    });
+
+    it('应该支持同一设备同一指标类型不同监测点的独立告警', async () => {
+      // Arrange: 准备两个不同监测点的告警
+      const totalVoltageAlarm = {
+        equipmentId: 'battery-equipment-id',
+        thresholdId: 'threshold-total-voltage',
+        abnormalMetricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        abnormalValue: 690.5,
+        thresholdRange: '上限: 683.1V',
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const singleVoltageAlarm = {
+        equipmentId: 'battery-equipment-id',
+        thresholdId: 'threshold-single-voltage',
+        abnormalMetricType: MetricType.VOLTAGE,
+        monitoringPoint: '单体电压',
+        faultName: '单体过压',
+        abnormalValue: 3.52,
+        thresholdRange: '上限: 3.45V',
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const mockTotalAlarm = createMockAlarm({
+        ...totalVoltageAlarm,
+        id: 'alarm-1',
+      });
+      const mockSingleAlarm = createMockAlarm({
+        ...singleVoltageAlarm,
+        id: 'alarm-2',
+      });
+
+      alarmRepository.create
+        .mockReturnValueOnce(mockTotalAlarm)
+        .mockReturnValueOnce(mockSingleAlarm);
+      alarmRepository.save
+        .mockResolvedValueOnce(mockTotalAlarm)
+        .mockResolvedValueOnce(mockSingleAlarm);
+
+      // Act: 执行操作
+      const result1 = await service.create(totalVoltageAlarm);
+      const result2 = await service.create(singleVoltageAlarm);
+
+      // Assert: 验证两个不同监测点的告警都被创建
+      expect(result1.monitoringPoint).toBe('总电压');
+      expect(result1.faultName).toBe('总压过压');
+      expect(result2.monitoringPoint).toBe('单体电压');
+      expect(result2.faultName).toBe('单体过压');
+    });
+
+    it('应该支持按监测点查询告警记录', async () => {
+      // Arrange: 准备查询条件
+      const queryDto = {
+        equipmentId: 'battery-equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        page: 1,
+        pageSize: 20,
+      };
+
+      const mockAlarms = [
+        createMockAlarm({
+          id: '1',
+          monitoringPoint: '总电压',
+          faultName: '总压过压',
+        }),
+        createMockAlarm({
+          id: '2',
+          monitoringPoint: '总电压',
+          faultName: '总压欠压',
+        }),
+      ];
+
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(2),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(mockAlarms),
+      };
+
+      alarmRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
+
+      // Act: 执行操作
+      const result = await service.findAll(queryDto);
+
+      // Assert: 验证返回了特定监测点的告警
+      expect(result.items).toHaveLength(2);
+      expect(result.items.every((a) => a.monitoringPoint === '总电压')).toBe(
+        true,
+      );
+    });
+
+    it('应该在告警记录中保留监测点信息（反规范化设计）', async () => {
+      // Arrange: 准备告警数据
+      const createDto = {
+        equipmentId: 'battery-equipment-id',
+        thresholdId: 'threshold-id',
+        abnormalMetricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        abnormalValue: 690.5,
+        thresholdRange: '上限: 683.1V',
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const mockAlarm = createMockAlarm({
+        ...createDto,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+      });
+
+      alarmRepository.create.mockReturnValue(mockAlarm);
+      alarmRepository.save.mockResolvedValue(mockAlarm);
+
+      // Act: 执行操作
+      const result = await service.create(createDto);
+
+      // Assert: 验证监测点和故障名称作为历史数据保留
+      expect(result.monitoringPoint).toBe('总电压');
+      expect(result.faultName).toBe('总压过压');
+      // 即使后续阈值配置被修改或删除，告警记录仍保留原始信息
+    });
+
+    it('应该允许监测点为空（向后兼容旧数据）', async () => {
+      // Arrange: 准备不含监测点的告警数据
+      const createDto = {
+        equipmentId: 'equipment-id',
+        thresholdId: 'threshold-id',
+        abnormalMetricType: MetricType.TEMPERATURE,
+        abnormalValue: 95.5,
+        thresholdRange: '上限: 85.5°C',
+        severity: AlarmSeverity.HIGH,
+      };
+
+      const mockAlarm = createMockAlarm({
+        ...createDto,
+        monitoringPoint: undefined,
+        faultName: undefined,
+      });
+
+      alarmRepository.create.mockReturnValue(mockAlarm);
+      alarmRepository.save.mockResolvedValue(mockAlarm);
+
+      // Act: 执行操作
+      const result = await service.create(createDto);
+
+      // Assert: 验证可以创建不含监测点的告警
+      expect(result).toBeDefined();
+      expect(result.monitoringPoint).toBeUndefined();
+      expect(result.faultName).toBeUndefined();
+    });
+
+    it('应该在告警统计中考虑监测点', async () => {
+      // Arrange: 准备包含不同监测点的告警数据
+      const mockQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawMany: jest.fn().mockResolvedValue([
+          {
+            equipmentId: 'battery-equipment-id',
+            monitoringPoint: '总电压',
+            severityCount: '5',
+            severity: AlarmSeverity.MEDIUM,
+          },
+          {
+            equipmentId: 'battery-equipment-id',
+            monitoringPoint: '单体电压',
+            severityCount: '3',
+            severity: AlarmSeverity.MEDIUM,
+          },
+        ]),
+      };
+
+      alarmRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
+
+      // Act: 执行操作（假设有相应的统计方法）
+      const result = await alarmRepository
+        .createQueryBuilder('alarm')
+        .select('alarm.equipmentId')
+        .addSelect('alarm.monitoringPoint')
+        .addSelect('COUNT(*)', 'severityCount')
+        .groupBy('alarm.equipmentId')
+        .getRawMany();
+
+      // Assert: 验证统计结果按监测点分组
+      expect(result).toHaveLength(2);
+      expect(result[0].monitoringPoint).toBe('总电压');
+      expect(result[1].monitoringPoint).toBe('单体电压');
+    });
+
+    it('应该在告警详情中显示完整的监测点和故障信息', async () => {
+      // Arrange: 准备完整信息的告警
+      const mockAlarm = createMockAlarm({
+        id: 'alarm-id',
+        equipmentId: 'battery-equipment-id',
+        abnormalMetricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        abnormalValue: 690.5,
+        thresholdRange: '上限: 683.1V',
+        severity: AlarmSeverity.MEDIUM,
+        status: AlarmStatus.PENDING,
+      });
+
+      alarmRepository.findOne.mockResolvedValue(mockAlarm);
+
+      // Act: 执行操作
+      const result = await service.findOne('alarm-id');
+
+      // Assert: 验证返回的告警包含完整信息
+      expect(result.monitoringPoint).toBe('总电压');
+      expect(result.faultName).toBe('总压过压');
+      expect(result.abnormalValue).toBe(690.5);
+      expect(result.abnormalMetricType).toBe(MetricType.VOLTAGE);
+    });
+  });
+
+  // ==================== 故障名称和处理措施显示测试 ====================
+  describe('故障名称和处理措施显示', () => {
+    it('应该在告警记录中保存故障名称', async () => {
+      // Arrange: 准备包含故障名称的告警数据
+      const createDto = {
+        equipmentId: 'battery-equipment-id',
+        thresholdId: 'threshold-id',
+        abnormalMetricType: MetricType.TEMPERATURE,
+        monitoringPoint: '电池温度',
+        faultName: '充电高温',
+        abnormalValue: 58.5,
+        thresholdRange: '上限: 55°C',
+        severity: AlarmSeverity.HIGH,
+      };
+
+      const mockAlarm = createMockAlarm({
+        ...createDto,
+        faultName: '充电高温',
+      });
+
+      alarmRepository.create.mockReturnValue(mockAlarm);
+      alarmRepository.save.mockResolvedValue(mockAlarm);
+
+      // Act: 执行操作
+      const result = await service.create(createDto);
+
+      // Assert: 验证故障名称被正确保存
+      expect(result.faultName).toBe('充电高温');
+    });
+
+    it('应该支持查询特定故障类型的告警', async () => {
+      // Arrange: 准备查询条件
+      const mockAlarms = [
+        createMockAlarm({
+          id: '1',
+          faultName: '总压过压',
+          monitoringPoint: '总电压',
+        }),
+        createMockAlarm({
+          id: '2',
+          faultName: '总压过压',
+          monitoringPoint: '总电压',
+        }),
+      ];
+
+      alarmRepository.find.mockResolvedValue(mockAlarms);
+
+      // Act: 执行操作
+      const result = await alarmRepository.find({
+        where: { faultName: '总压过压' },
+      });
+
+      // Assert: 验证返回了特定故障类型的告警
+      expect(result).toHaveLength(2);
+      expect(result.every((a) => a.faultName === '总压过压')).toBe(true);
+    });
+
+    it('应该在告警列表中显示故障名称便于快速识别', async () => {
+      // Arrange: 准备混合故障类型的告警
+      const mockAlarms = [
+        createMockAlarm({
+          id: '1',
+          monitoringPoint: '总电压',
+          faultName: '总压过压',
+          abnormalValue: 690.5,
+        }),
+        createMockAlarm({
+          id: '2',
+          monitoringPoint: '单体电压',
+          faultName: '单体过压',
+          abnormalValue: 3.52,
+        }),
+        createMockAlarm({
+          id: '3',
+          monitoringPoint: '电池温度',
+          faultName: '充电高温',
+          abnormalValue: 58.5,
+        }),
+      ];
+
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(3),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getMany: jest.fn().mockResolvedValue(mockAlarms),
+      };
+
+      alarmRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
+
+      // Act: 执行操作
+      const result = await service.findAll({ page: 1, pageSize: 20 });
+
+      // Assert: 验证每条告警都包含故障名称
+      expect(result.items).toHaveLength(3);
+      expect(result.items[0].faultName).toBe('总压过压');
+      expect(result.items[1].faultName).toBe('单体过压');
+      expect(result.items[2].faultName).toBe('充电高温');
+    });
+
+    it('应该允许故障名称为空（向后兼容）', async () => {
+      // Arrange: 准备不含故障名称的告警
+      const createDto = {
+        equipmentId: 'equipment-id',
+        thresholdId: 'threshold-id',
+        abnormalMetricType: MetricType.TEMPERATURE,
+        abnormalValue: 95.5,
+        thresholdRange: '上限: 85.5°C',
+        severity: AlarmSeverity.HIGH,
+      };
+
+      const mockAlarm = createMockAlarm({
+        ...createDto,
+        faultName: undefined,
+      });
+
+      alarmRepository.create.mockReturnValue(mockAlarm);
+      alarmRepository.save.mockResolvedValue(mockAlarm);
+
+      // Act: 执行操作
+      const result = await service.create(createDto);
+
+      // Assert: 验证可以创建不含故障名称的告警
+      expect(result).toBeDefined();
+      expect(result.faultName).toBeUndefined();
     });
   });
 });

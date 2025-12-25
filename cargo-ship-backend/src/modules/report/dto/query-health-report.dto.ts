@@ -1,5 +1,5 @@
 import { IsOptional, IsString, IsEnum, IsNumber, Min } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 import { ReportType } from '../../../database/entities/health-report.entity';
 
@@ -10,9 +10,9 @@ export class QueryHealthReportDto {
   /**
    * 设备ID（仅查询单设备报告）
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '设备ID（仅查询单设备报告）',
-    required: false,
+    example: 'SYS-BILGE-001',
   })
   @IsOptional()
   @IsString({ message: '设备ID必须是字符串' })
@@ -21,10 +21,10 @@ export class QueryHealthReportDto {
   /**
    * 报告类型
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '报告类型',
     enum: ReportType,
-    required: false,
+    example: ReportType.SINGLE,
   })
   @IsOptional()
   @IsEnum(ReportType, { message: '报告类型必须是single或aggregate' })
@@ -33,9 +33,9 @@ export class QueryHealthReportDto {
   /**
    * 生成时间-开始（时间戳，毫秒）
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '生成时间-开始（时间戳，毫秒）',
-    required: false,
+    example: 1700000000000,
   })
   @IsOptional()
   @IsNumber({}, { message: '开始时间必须是数字' })
@@ -45,9 +45,9 @@ export class QueryHealthReportDto {
   /**
    * 生成时间-结束（时间戳，毫秒）
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '生成时间-结束（时间戳，毫秒）',
-    required: false,
+    example: 1700086400000,
   })
   @IsOptional()
   @IsNumber({}, { message: '结束时间必须是数字' })
@@ -57,10 +57,10 @@ export class QueryHealthReportDto {
   /**
    * 页码（从1开始）
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '页码（从1开始）',
+    example: 1,
     default: 1,
-    required: false,
   })
   @IsOptional()
   @IsNumber({}, { message: '页码必须是数字' })
@@ -71,10 +71,10 @@ export class QueryHealthReportDto {
   /**
    * 每页数量
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '每页数量',
+    example: 20,
     default: 20,
-    required: false,
   })
   @IsOptional()
   @IsNumber({}, { message: '每页数量必须是数字' })

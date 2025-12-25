@@ -107,14 +107,27 @@ export class ExportService {
       this.logger.warn('未找到符合条件的监测数据');
     }
 
+    // 格式化导出数据 - 包含监测点字段并使用中文列名
+    const formattedData = data.map((item) => ({
+      设备ID: item.equipmentId,
+      监测点: item.monitoringPoint || '(未设置)', // 新增:监测点名称
+      指标类型: item.metricType,
+      数值: item.value,
+      单位: item.unit,
+      数据质量: item.quality,
+      数据来源: item.source,
+      时间戳: item.timestamp,
+      创建时间: item.createdAt,
+    }));
+
     // 生成文件
     const fileName = `monitoring_data_${Date.now()}.${dto.exportFormat === ExportFormat.EXCEL ? 'xlsx' : 'csv'}`;
     const filePath = path.join(this.exportDir, fileName);
 
     if (dto.exportFormat === ExportFormat.EXCEL) {
-      await this.exportToExcel(data, filePath, '监测数据');
+      await this.exportToExcel(formattedData, filePath, '监测数据');
     } else if (dto.exportFormat === ExportFormat.CSV) {
-      await this.exportToCSV(data, filePath);
+      await this.exportToCSV(formattedData, filePath);
     }
 
     // 生成下载链接和过期时间
@@ -191,14 +204,33 @@ export class ExportService {
       this.logger.warn('未找到符合条件的告警记录');
     }
 
+    // 格式化导出数据 - 包含监测点、故障名称和处理措施字段
+    const formattedData = data.map((item) => ({
+      告警ID: item.id,
+      设备ID: item.equipmentId,
+      监测点: item.monitoringPoint || '(未设置)', // 新增:监测点名称
+      故障名称: item.faultName || '(未设置)', // 新增:故障名称
+      异常指标类型: item.abnormalMetricType,
+      异常值: item.abnormalValue,
+      阈值范围: item.thresholdRange,
+      严重程度: item.getSeverityText(),
+      处理状态: item.getStatusText(),
+      触发时间: item.triggeredAt,
+      处理人ID: item.handler,
+      处理时间: item.handledAt,
+      处理说明: item.handleNote,
+      处理措施建议: item.recommendedAction || '(无)', // 新增:处理措施
+      创建时间: item.createdAt,
+    }));
+
     // 生成文件
     const fileName = `alarm_records_${Date.now()}.${dto.exportFormat === ExportFormat.EXCEL ? 'xlsx' : 'csv'}`;
     const filePath = path.join(this.exportDir, fileName);
 
     if (dto.exportFormat === ExportFormat.EXCEL) {
-      await this.exportToExcel(data, filePath, '告警记录');
+      await this.exportToExcel(formattedData, filePath, '告警记录');
     } else if (dto.exportFormat === ExportFormat.CSV) {
-      await this.exportToCSV(data, filePath);
+      await this.exportToCSV(formattedData, filePath);
     }
 
     // 生成下载链接和过期时间

@@ -52,12 +52,11 @@ import {
 import { Badge } from './badge';
 import { Alert, AlertDescription } from './alert';
 
-import { 
-  ReportsService, 
-  ReportConfig, 
-  ReportType 
-} from '../../services/reports-service';
-import { useReportsStore } from '../../stores/reports-store';
+import {
+  useReportsStore,
+  type ReportConfig,
+  type ReportType
+} from '../../stores/reports-store';
 
 /**
  * 报表生成器属性接口
@@ -158,7 +157,7 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
   const [includeRawData, setIncludeRawData] = useState(false);
   
   // 报表Store
-  const { generateReport } = useReportsStore();
+  const { generateReport, downloadReport } = useReportsStore();
   
   // 获取可用的报表类型
   const availableReportTypes = context?.type ? 
@@ -266,20 +265,8 @@ export const ReportGenerator: React.FC<ReportGeneratorProps> = ({
   const handleDownload = async () => {
     if (generatedReport?.id) {
       try {
-        const blob = await ReportsService.downloadReport(generatedReport.id);
-        
-        // 创建下载链接
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `${generatedReport.name}.${exportFormat.toLowerCase()}`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        
-        // 清理URL对象
-        URL.revokeObjectURL(url);
-        
+        // 调用 store 的 downloadReport 方法
+        await downloadReport(generatedReport.id);
       } catch (error: any) {
         setError(error.message || '下载失败');
       }

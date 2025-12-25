@@ -16,6 +16,7 @@ import {
   JoinColumn,
   Index,
 } from 'typeorm';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { User } from './user.entity';
 
 /**
@@ -100,6 +101,11 @@ export class AuditLog {
    * 审计日志唯一标识符
    * 使用UUID v4格式，自动生成
    */
+  @ApiProperty({
+    description: '审计日志唯一标识符（UUID格式）',
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    type: String,
+  })
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
@@ -110,6 +116,11 @@ export class AuditLog {
    * - 关联到User实体
    * - 可为null（系统自动操作或匿名访问）
    */
+  @ApiPropertyOptional({
+    description: '执行操作的用户ID（UUID格式），系统操作时为null',
+    example: 'f1g2h3i4-j5k6-7890-lmno-pq1234567890',
+    type: String,
+  })
   @Column({ name: 'user_id', type: 'uuid', nullable: true })
   userId: string;
 
@@ -120,6 +131,11 @@ export class AuditLog {
    * - 使用AuditAction枚举值
    * - 记录具体执行了什么操作
    */
+  @ApiProperty({
+    description: '操作类型',
+    enum: AuditAction,
+    example: AuditAction.CREATE,
+  })
   @Column({
     type: 'enum',
     enum: AuditAction,
@@ -133,6 +149,12 @@ export class AuditLog {
    * - 最大长度100字符
    * - 例如：user, device, vessel等
    */
+  @ApiProperty({
+    description: '操作的资源类型（如user、device、equipment等）',
+    example: 'equipment',
+    type: String,
+    maxLength: 100,
+  })
   @Column({ type: 'varchar', length: 100 })
   resource: string;
 
@@ -144,6 +166,12 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 用于定位具体操作的记录
    */
+  @ApiPropertyOptional({
+    description: '操作的资源ID，用于定位具体操作的记录',
+    example: 'SYS-BAT-001',
+    type: String,
+    maxLength: 100,
+  })
   @Column({ name: 'resource_id', type: 'varchar', length: 100, nullable: true })
   resourceId: string;
 
@@ -155,6 +183,11 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 记录操作的详细信息
    */
+  @ApiPropertyOptional({
+    description: '操作详细描述',
+    example: '创建设备：左推进电机',
+    type: String,
+  })
   @Column({ type: 'text', nullable: true })
   details: string;
 
@@ -166,6 +199,10 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 用于数据变更的审计追溯
    */
+  @ApiPropertyOptional({
+    description: '操作前的数据值（JSON格式）',
+    example: { status: 'normal', deviceName: '旧名称' },
+  })
   @Column({ name: 'old_values', type: 'json', nullable: true })
   oldValues: Record<string, any>;
 
@@ -177,6 +214,10 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 用于数据变更的审计追溯
    */
+  @ApiPropertyOptional({
+    description: '操作后的新数据值（JSON格式）',
+    example: { status: 'warning', deviceName: '新名称' },
+  })
   @Column({ name: 'new_values', type: 'json', nullable: true })
   newValues: Record<string, any>;
 
@@ -188,6 +229,12 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 用于安全审计和异常检测
    */
+  @ApiPropertyOptional({
+    description: '操作来源IP地址（支持IPv4和IPv6）',
+    example: '192.168.1.100',
+    type: String,
+    maxLength: 45,
+  })
   @Column({ name: 'ip_address', type: 'varchar', length: 45, nullable: true })
   ipAddress: string;
 
@@ -199,6 +246,12 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 记录浏览器/客户端信息
    */
+  @ApiPropertyOptional({
+    description: '用户代理字符串，记录浏览器/客户端信息',
+    example: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+    type: String,
+    maxLength: 255,
+  })
   @Column({ name: 'user_agent', type: 'varchar', length: 255, nullable: true })
   userAgent: string;
 
@@ -210,6 +263,12 @@ export class AuditLog {
    * - false: 操作失败
    * - 默认值：true
    */
+  @ApiProperty({
+    description: '操作是否成功',
+    example: true,
+    type: Boolean,
+    default: true,
+  })
   @Column({ type: 'boolean', default: true })
   success: boolean;
 
@@ -221,6 +280,11 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 当success为false时记录失败原因
    */
+  @ApiPropertyOptional({
+    description: '错误信息，当操作失败时记录失败原因',
+    example: '设备ID不存在',
+    type: String,
+  })
   @Column({ name: 'error_message', type: 'text', nullable: true })
   errorMessage: string;
 
@@ -232,6 +296,11 @@ export class AuditLog {
    * - 可选字段（nullable）
    * - 用于性能监控和分析
    */
+  @ApiPropertyOptional({
+    description: '操作执行时长（毫秒）',
+    example: 125,
+    type: Number,
+  })
   @Column({ type: 'int', nullable: true })
   duration: number;
 
@@ -242,6 +311,10 @@ export class AuditLog {
    * - 外键关联到users表
    * - 可为null（系统操作）
    */
+  @ApiPropertyOptional({
+    description: '执行操作的用户',
+    type: () => User,
+  })
   @ManyToOne(() => User, (user) => user.auditLogs, { nullable: true })
   @JoinColumn({ name: 'user_id' })
   user: User;
@@ -253,6 +326,11 @@ export class AuditLog {
    * - 自动设置为记录创建时的时间戳
    * - 用于审计追溯和时间排序
    */
+  @ApiProperty({
+    description: '日志创建时间',
+    example: '2025-01-01T10:00:00.000Z',
+    type: Date,
+  })
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 }

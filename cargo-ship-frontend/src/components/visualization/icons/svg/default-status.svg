@@ -1,0 +1,13 @@
+<!-- 通用状态监测点占位符图标 -->
+<!-- 用途：用于尚未设计具体图标的布尔状态类型监测点 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 圆形外框 -->
+  <circle cx="12" cy="12" r="9" />
+  <!-- 开关符号 -->
+  <rect x="8" y="10" width="8" height="4" rx="2" />
+  <!-- 开关按钮 -->
+  <circle cx="14" cy="12" r="2" fill="currentColor" />
+  <!-- 状态指示线 -->
+  <line x1="12" y1="7" x2="12" y2="9" stroke-width="1.5" />
+  <line x1="12" y1="15" x2="12" y2="17" stroke-width="1.5" />
+</svg>

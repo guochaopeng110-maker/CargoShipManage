@@ -71,8 +71,8 @@ export class Logger {
   private static output(level: LogLevel, message: string, args: any[]): void {
     const timestamp = this.formatTime();
     
-    // 按设计要求格式化: [INFO] 13:54:28.755: 应用启动开始
-    const formattedMessage = `[${level}] ${timestamp}: ${message}`;
+    // 按设计要求格式化: [INFO] 13:54:28.755 [ComponentName]: 应用启动开始
+    const formattedMessage = `[${level}] ${timestamp} [${this.componentName}]: ${message}`;
     
     // 整合所有数据到一个字符串中输出
     const fullMessage = `${formattedMessage}${

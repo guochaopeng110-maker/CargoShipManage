@@ -4,8 +4,10 @@ import {
   IsEnum,
   IsOptional,
   IsInt,
+  IsString,
   Min,
   Max,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -14,7 +16,7 @@ import { MetricType } from '../../../database/entities/time-series-data.entity';
 /**
  * 查询时序监测数据 DTO
  *
- * 支持按设备、指标类型、时间范围进行查询
+ * 支持按设备、指标类型、监测点、时间范围进行查询
  * 支持分页查询
  */
 export class QueryTimeSeriesDataDto {
@@ -41,6 +43,21 @@ export class QueryTimeSeriesDataDto {
   @IsOptional()
   @IsEnum(MetricType, { message: '指标类型无效' })
   metricType?: MetricType;
+
+  /**
+   * 监测点名称（可选）
+   * 用于筛选特定的业务监测点
+   * 如果提供，则仅返回该监测点的数据
+   */
+  @ApiPropertyOptional({
+    description: '监测点名称（可选，用于筛选特定监测点）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
 
   /**
    * 开始时间（必填）

@@ -17,6 +17,9 @@ async function bootstrap() {
   // 'app' 是 INestApplication 接口的实例，代表了整个应用程序。
   const app = await NestFactory.create(AppModule);
 
+  // 启动跨域
+  app.enableCors();
+
   // 启用全局序列化拦截器，自动排除实体中标记为 @Exclude() 的敏感字段
   app.useGlobalInterceptors(new ClassSerializerInterceptor(app.get(Reflector)));
 

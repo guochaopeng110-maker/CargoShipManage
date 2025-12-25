@@ -49,6 +49,10 @@ export class DataQualityService {
     [MetricType.CURRENT]: { min: 0, max: 1000, unit: 'A' },
     [MetricType.VOLTAGE]: { min: 0, max: 1000, unit: 'V' },
     [MetricType.POWER]: { min: 0, max: 10000, unit: 'kW' },
+    [MetricType.FREQUENCY]: { min: 0, max: 100, unit: 'Hz' },
+    [MetricType.LEVEL]: { min: 0, max: 10000, unit: 'mm' },
+    [MetricType.RESISTANCE]: { min: 0, max: 10000, unit: 'Ω/V' },
+    [MetricType.SWITCH]: { min: 0, max: 1, unit: '' },
   };
 
   /**
@@ -171,12 +175,15 @@ export class DataQualityService {
   /**
    * 验证时间戳
    */
-  private checkTimestamp(timestamp: Date): {
+  private checkTimestamp(timestamp: Date | string): {
     isValid: boolean;
     message: string;
   } {
     const now = new Date();
-    const timestampMs = timestamp.getTime();
+    // 兼容处理：如果是字符串，先转换为Date对象
+    const dateObj =
+      typeof timestamp === 'string' ? new Date(timestamp) : timestamp;
+    const timestampMs = dateObj.getTime();
     const nowMs = now.getTime();
 
     // 1. 检查时间戳是否为有效日期
@@ -192,7 +199,7 @@ export class DataQualityService {
     if (timestampMs > nowMs + fiveMinutes) {
       return {
         isValid: false,
-        message: `时间戳在未来: ${timestamp.toISOString()}`,
+        message: `时间戳在未来: ${dateObj.toISOString()}`,
       };
     }
 
@@ -201,7 +208,7 @@ export class DataQualityService {
     if (timestampMs < nowMs - oneYear) {
       return {
         isValid: false,
-        message: `时间戳过于陈旧: ${timestamp.toISOString()} (超过1年)`,
+        message: `时间戳过于陈旧: ${dateObj.toISOString()} (超过1年)`,
       };
     }
 
@@ -210,7 +217,7 @@ export class DataQualityService {
     if (timestampMs < nowMs - oneHour) {
       return {
         isValid: true,
-        message: `时间戳在过去: ${timestamp.toISOString()} (可能是补录数据)`,
+        message: `时间戳在过去: ${dateObj.toISOString()} (可能是补录数据)`,
       };
     }
 

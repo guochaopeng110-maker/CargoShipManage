@@ -23,6 +23,9 @@ export class EquipmentPushService {
   /**
    * 推送设备状态变化
    *
+   * @deprecated 已废弃 - 设备状态变化不再通过 WebSocket 推送
+   * 此方法将在下一个主版本中移除
+   *
    * @param equipment 设备对象
    * @param oldStatus 旧状态（可选）
    */
@@ -30,6 +33,7 @@ export class EquipmentPushService {
     equipment: Equipment,
     oldStatus?: EquipmentStatus,
   ): Promise<void> {
+    this.logger.warn('警告: pushStatusChange() 已废弃，设备状态变化不再推送');
     this.logger.log(
       `推送设备状态变化: ${equipment.deviceName}(${equipment.id}), ${oldStatus || '未知'} -> ${equipment.status}`,
     );
@@ -74,17 +78,20 @@ export class EquipmentPushService {
         `设备 ${equipment.deviceName} 进入异常状态: ${equipment.status}`,
       );
     }
-
-    // 广播设备概览更新通知
-    this.broadcastEquipmentOverview();
   }
 
   /**
    * 推送设备信息更新
    *
+   * @deprecated 已废弃 - 设备信息更新不再通过 WebSocket 推送
+   * 此方法将在下一个主版本中移除
+   *
    * @param equipment 更新后的设备对象
    */
   async pushEquipmentUpdate(equipment: Equipment): Promise<void> {
+    this.logger.warn(
+      '警告: pushEquipmentUpdate() 已废弃，设备信息更新不再推送',
+    );
     this.logger.log(
       `推送设备信息更新: ${equipment.deviceName}(${equipment.id})`,
     );
@@ -123,9 +130,15 @@ export class EquipmentPushService {
   /**
    * 推送设备创建事件
    *
+   * @deprecated 已废弃 - 设备创建事件不再通过 WebSocket 推送
+   * 此方法将在下一个主版本中移除
+   *
    * @param equipment 新创建的设备对象
    */
   async pushEquipmentCreated(equipment: Equipment): Promise<void> {
+    this.logger.warn(
+      '警告: pushEquipmentCreated() 已废弃，设备创建事件不再推送',
+    );
     this.logger.log(
       `推送设备创建事件: ${equipment.deviceName}(${equipment.id})`,
     );
@@ -154,13 +167,13 @@ export class EquipmentPushService {
       'equipment:created',
       createMessage,
     );
-
-    // 更新设备概览
-    this.broadcastEquipmentOverview();
   }
 
   /**
    * 推送设备删除事件
+   *
+   * @deprecated 已废弃 - 设备删除事件不再通过 WebSocket 推送
+   * 此方法将在下一个主版本中移除
    *
    * @param equipmentId 设备ID
    * @param equipmentName 设备名称
@@ -169,6 +182,9 @@ export class EquipmentPushService {
     equipmentId: string,
     equipmentName: string,
   ): Promise<void> {
+    this.logger.warn(
+      '警告: pushEquipmentDeleted() 已废弃，设备删除事件不再推送',
+    );
     this.logger.log(`推送设备删除事件: ${equipmentName}(${equipmentId})`);
 
     const deleteMessage = {
@@ -195,13 +211,13 @@ export class EquipmentPushService {
       'equipment:deleted',
       deleteMessage,
     );
-
-    // 更新设备概览
-    this.broadcastEquipmentOverview();
   }
 
   /**
    * 推送设备实时数据
+   *
+   * @deprecated 已废弃 - 请使用 MonitoringPushService.pushNewData()
+   * 此方法将在下一个主版本中移除
    *
    * @param equipmentId 设备ID
    * @param dataPoint 数据点
@@ -215,6 +231,10 @@ export class EquipmentPushService {
       timestamp: Date;
     },
   ): Promise<void> {
+    this.logger.warn(
+      '警告: pushRealtimeData() 已废弃,请使用 MonitoringPushService.pushNewData()',
+    );
+
     const dataMessage = {
       equipmentId,
       metricType: dataPoint.metricType,
@@ -282,9 +302,15 @@ export class EquipmentPushService {
   /**
    * 广播设备概览更新
    *
+   * @deprecated 已废弃 - 设备概览更新不再通过 WebSocket 推送
+   * 此方法将在下一个主版本中移除
+   *
    * 通知所有用户刷新设备统计数据
    */
   private broadcastEquipmentOverview(): void {
+    this.logger.warn(
+      '警告: broadcastEquipmentOverview() 已废弃，设备概览不再推送',
+    );
     this.websocketGateway.broadcast('equipment:overview:update', {
       timestamp: new Date().toISOString(),
       message: '设备数据已更新，请刷新',

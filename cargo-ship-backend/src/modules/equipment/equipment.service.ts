@@ -10,10 +10,12 @@ import {
   Equipment,
   EquipmentStatus,
 } from '../../database/entities/equipment.entity';
+import { MonitoringPoint } from '../../database/entities/monitoring-point.entity';
 import { AuditAction } from '../../database/entities/audit-log.entity';
 import { CreateEquipmentDto } from './dto/create-equipment.dto';
 import { UpdateEquipmentDto } from './dto/update-equipment.dto';
 import { QueryEquipmentDto } from './dto/query-equipment.dto';
+import { QueryMonitoringPointDto } from './dto/monitoring-point.dto';
 import { AuditService } from '../auth/audit.service';
 
 /**
@@ -25,6 +27,8 @@ export class EquipmentService {
   constructor(
     @InjectRepository(Equipment)
     private readonly equipmentRepository: Repository<Equipment>,
+    @InjectRepository(MonitoringPoint)
+    private readonly monitoringPointRepository: Repository<MonitoringPoint>,
     private readonly auditService: AuditService,
   ) {}
 
@@ -85,7 +89,7 @@ export class EquipmentService {
     data: Equipment[];
     total: number;
     page: number;
-    limit: number;
+    pageSize: number;
     totalPages: number;
   }> {
     const { page = 1, limit = 10, deviceType, status, keyword } = queryDto;
@@ -131,7 +135,7 @@ export class EquipmentService {
       data,
       total,
       page,
-      limit,
+      pageSize: limit,
       totalPages,
     };
   }
@@ -328,5 +332,165 @@ export class EquipmentService {
       fault,
       offline,
     };
+  }
+
+  // ========== 监测点相关方法 ==========
+
+  /**
+   * 查询设备的所有监测点
+   *
+   * @param equipmentId 设备ID（UUID）
+   * @param queryDto 查询参数（分页、筛选）
+   * @returns 分页的监测点列表和总数
+   */
+  async getMonitoringPoints(
+    equipmentId: string,
+    queryDto?: QueryMonitoringPointDto,
+  ): Promise<{
+    items: MonitoringPoint[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    // 验证设备是否存在
+    await this.findOne(equipmentId);
+
+    const { page = 1, pageSize = 20, metricType, keyword } = queryDto || {};
+
+    // 构建查询条件
+    const queryBuilder = this.monitoringPointRepository
+      .createQueryBuilder('mp')
+      .where('mp.equipmentId = :equipmentId', { equipmentId });
+
+    // 按指标类型筛选
+    if (metricType) {
+      queryBuilder.andWhere('mp.metricType = :metricType', { metricType });
+    }
+
+    // 关键词搜索（监测点名称）
+    if (keyword) {
+      queryBuilder.andWhere('mp.pointName LIKE :keyword', {
+        keyword: `%${keyword}%`,
+      });
+    }
+
+    // 排序：按监测点名称升序
+    queryBuilder.orderBy('mp.pointName', 'ASC');
+
+    // 分页
+    const skip = (page - 1) * pageSize;
+    queryBuilder.skip(skip).take(pageSize);
+
+    // 执行查询
+    const [items, total] = await queryBuilder.getManyAndCount();
+
+    // 计算总页数
+    const totalPages = Math.ceil(total / pageSize);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
+  }
+
+  /**
+   * 根据监测点名称查询单个监测点
+   *
+   * @param equipmentId 设备ID（UUID）
+   * @param pointName 监测点名称
+   * @returns 监测点实体，如果不存在返回 null
+   */
+  async getMonitoringPointByName(
+    equipmentId: string,
+    pointName: string,
+  ): Promise<MonitoringPoint | null> {
+    // 验证设备是否存在
+    await this.findOne(equipmentId);
+
+    const monitoringPoint = await this.monitoringPointRepository.findOne({
+      where: {
+        equipmentId,
+        pointName,
+      },
+    });
+
+    return monitoringPoint;
+  }
+
+  /**
+   * 校验监测点是否为该设备的有效监测点
+   *
+   * 用于数据上报、导入、告警配置时的校验
+   *
+   * @param equipmentId 设备ID（UUID）
+   * @param pointName 监测点名称
+   * @param metricType 可选：同时校验指标类型是否一致
+   * @throws NotFoundException 如果设备不存在
+   * @throws BadRequestException 如果监测点无效或类型不匹配
+   */
+  async validateMonitoringPoint(
+    equipmentId: string,
+    pointName: string,
+    metricType?: string,
+  ): Promise<MonitoringPoint> {
+    // 验证设备是否存在
+    const equipment = await this.findOne(equipmentId);
+
+    // 查询监测点
+    const monitoringPoint = await this.getMonitoringPointByName(
+      equipmentId,
+      pointName,
+    );
+
+    if (!monitoringPoint) {
+      throw new BadRequestException(
+        `监测点 '${pointName}' 不是设备 ${equipment.deviceId} 的有效监测点。` +
+          `请调用 GET /api/equipment/${equipmentId}/monitoring-points 获取有效监测点列表。`,
+      );
+    }
+
+    // 如果提供了 metricType，验证类型是否一致
+    if (metricType && monitoringPoint.metricType !== metricType) {
+      throw new BadRequestException(
+        `监测点 '${pointName}' 的指标类型应为 ${monitoringPoint.metricType}，但收到 ${metricType}。`,
+      );
+    }
+
+    return monitoringPoint;
+  }
+
+  /**
+   * 批量校验多个监测点（性能优化版本）
+   *
+   * 用于批量导入时的校验，避免逐条查询数据库
+   *
+   * @param equipmentId 设备ID（UUID）
+   * @param pointNames 监测点名称数组
+   * @returns 有效的监测点实体列表
+   */
+  async validateMonitoringPointsBatch(
+    equipmentId: string,
+    pointNames: string[],
+  ): Promise<MonitoringPoint[]> {
+    // 验证设备是否存在
+    await this.findOne(equipmentId);
+
+    if (pointNames.length === 0) {
+      return [];
+    }
+
+    // 一次性加载该设备的所有监测点
+    // 优化：只查询需要的监测点名称
+    const monitoringPoints = await this.monitoringPointRepository
+      .createQueryBuilder('mp')
+      .where('mp.equipmentId = :equipmentId', { equipmentId })
+      .andWhere('mp.pointName IN (:...pointNames)', { pointNames })
+      .getMany();
+
+    return monitoringPoints;
   }
 }

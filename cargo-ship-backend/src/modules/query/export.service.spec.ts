@@ -4,7 +4,10 @@ import { NotFoundException } from '@nestjs/common';
 import { Repository } from 'typeorm';
 import { ExportService } from './export.service';
 import { Equipment } from '../../database/entities/equipment.entity';
-import { TimeSeriesData } from '../../database/entities/time-series-data.entity';
+import {
+  TimeSeriesData,
+  MetricType,
+} from '../../database/entities/time-series-data.entity';
 import { AlarmRecord } from '../../database/entities/alarm-record.entity';
 import { HealthReport } from '../../database/entities/health-report.entity';
 import {
@@ -38,9 +41,9 @@ describe('QueryService ExportService', () => {
     partial: Partial<TimeSeriesData> = {},
   ): TimeSeriesData =>
     ({
-      id: 'data-id',
+      id: 1,
       equipmentId: 'equipment-id',
-      metricType: 'temperature',
+      metricType: MetricType.TEMPERATURE,
       value: 75.5,
       unit: '°C',
       timestamp: new Date('2024-01-15T10:30:00'),
@@ -53,19 +56,39 @@ describe('QueryService ExportService', () => {
    */
   const createMockAlarmRecord = (
     partial: Partial<AlarmRecord> = {},
-  ): AlarmRecord =>
-    ({
+  ): AlarmRecord => {
+    const severityMap = {
+      [AlarmSeverity.LOW]: '低',
+      [AlarmSeverity.MEDIUM]: '中',
+      [AlarmSeverity.HIGH]: '高',
+      [AlarmSeverity.CRITICAL]: '严重',
+    };
+
+    const statusMap = {
+      [AlarmStatus.PENDING]: '待处理',
+      [AlarmStatus.PROCESSING]: '处理中',
+      [AlarmStatus.RESOLVED]: '已解决',
+      [AlarmStatus.IGNORED]: '已忽略',
+    };
+
+    const severity = partial.severity || AlarmSeverity.HIGH;
+    const status = partial.status || AlarmStatus.PENDING;
+
+    return {
       id: 'alarm-id',
       equipmentId: 'equipment-id',
-      metricType: 'temperature',
+      metricType: MetricType.TEMPERATURE,
       currentValue: 95.0,
       threshold: 85.0,
-      severity: AlarmSeverity.HIGH,
-      status: AlarmStatus.PENDING,
+      severity,
+      status,
       triggeredAt: new Date('2024-01-15T10:30:00'),
       description: '温度过高',
+      getSeverityText: jest.fn().mockReturnValue(severityMap[severity]),
+      getStatusText: jest.fn().mockReturnValue(statusMap[status]),
       ...partial,
-    }) as AlarmRecord;
+    } as any;
+  };
 
   /**
    * 创建模拟的健康报告对象
@@ -149,7 +172,7 @@ describe('QueryService ExportService', () => {
         exportFormat: ExportFormat.EXCEL,
         queryConditions: {
           equipmentId: 'equipment-id',
-          metricType: 'temperature',
+          metricType: MetricType.TEMPERATURE,
           startTime: new Date('2024-01-01').getTime(),
           endTime: new Date('2024-01-31').getTime(),
         },
@@ -157,7 +180,7 @@ describe('QueryService ExportService', () => {
 
       const mockData = [
         createMockTimeSeriesData(),
-        createMockTimeSeriesData({ value: 80.2, id: 'data-id-2' }),
+        createMockTimeSeriesData({ value: 80.2, id: 2 }),
       ];
 
       const mockQueryBuilder = {
@@ -260,7 +283,7 @@ describe('QueryService ExportService', () => {
       const dto: ExportMonitoringDataDto = {
         exportFormat: ExportFormat.EXCEL,
         queryConditions: {
-          metricType: 'pressure',
+          metricType: MetricType.PRESSURE,
         },
       };
 
@@ -281,7 +304,7 @@ describe('QueryService ExportService', () => {
       // Assert - 验证结果
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
         'data.metricType = :metricType',
-        { metricType: 'pressure' },
+        { metricType: MetricType.PRESSURE },
       );
     });
 
@@ -313,12 +336,12 @@ describe('QueryService ExportService', () => {
 
       // Assert - 验证结果
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'data.timestamp >= :startDate',
-        { startDate: new Date(startTime) },
+        'UNIX_TIMESTAMP(data.timestamp) >= :startTime',
+        { startTime: Math.floor(startTime / 1000) },
       );
       expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
-        'data.timestamp <= :endDate',
-        { endDate: new Date(endTime) },
+        'UNIX_TIMESTAMP(data.timestamp) <= :endTime',
+        { endTime: Math.floor(endTime / 1000) },
       );
     });
 

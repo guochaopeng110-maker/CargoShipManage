@@ -115,4 +115,19 @@ export default registerAs('app', () => ({
    * - 需要发送Authorization头
    */
   corsCredentials: process.env.CORS_CREDENTIALS === 'true' || true,
+
+  /**
+   * 第三方健康评估API的URL
+   *
+   * 说明：
+   * - 用于获取设备健康评分的外部API接口地址。
+   * - 这是系统进行健康评估时依赖的关键服务。
+   *
+   * 默认值：''
+   * 环境变量：THIRD_PARTY_HP_API_URL
+   *
+   * @example
+   * THIRD_PARTY_HP_API_URL=https://api.example.com/health-score
+   */
+  thirdPartyHpApiUrl: process.env.THIRD_PARTY_HP_API_URL || '',
 }));

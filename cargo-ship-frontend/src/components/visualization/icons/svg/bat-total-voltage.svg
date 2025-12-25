@@ -1,0 +1,12 @@
+<!-- 电池总电压图标 -->
+<!-- 设计要点：电池组符号 + 闪电符号，强调总电压 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 电池外框 -->
+  <rect x="3" y="7" width="14" height="10" rx="2" />
+  <!-- 电池正极凸起 -->
+  <line x1="17" y1="10" x2="17" y2="14" />
+  <!-- 电量指示（满电） -->
+  <rect x="5" y="9" width="10" height="6" rx="1" />
+  <!-- 闪电符号（表示电压） -->
+  <path d="M19 9l-3 5h2l-3 5" stroke-width="1.5" />
+</svg>

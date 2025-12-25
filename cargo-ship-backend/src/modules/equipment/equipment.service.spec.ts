@@ -194,7 +194,7 @@ describe('EquipmentService', () => {
       expect(result.data).toEqual(mockEquipments);
       expect(result.total).toBe(2);
       expect(result.page).toBe(1);
-      expect(result.limit).toBe(10);
+      expect(result.pageSize).toBe(10);
       expect(result.totalPages).toBe(1);
     });
 

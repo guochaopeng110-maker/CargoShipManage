@@ -3,12 +3,12 @@
 
 import React, { ReactNode, useEffect, useState, useCallback, useRef } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { usePermissions } from '../hooks/usePermissions';
-import { 
-  PermissionCheckConfig, 
-  PermissionValidationResult, 
+import {
+  usePermissions,
+  PermissionCheckConfig,
+  PermissionValidationResult,
   PermissionContext
-} from '../utils/permissions';
+} from '../hooks/usePermissions';
 import { useAuthStore } from '../stores/auth-store';
 import { Skeleton } from './ui/skeleton';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';

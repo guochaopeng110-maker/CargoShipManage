@@ -1,0 +1,15 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 泵体 -->
+  <circle cx="12" cy="12" r="6" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <!-- 叶轮 -->
+  <path d="M12 8 L14 12 L12 16 L10 12 Z" stroke="currentColor" stroke-width="1.2" fill="none"/>
+  <path d="M8 12 L12 10 L16 12 L12 14 Z" stroke="currentColor" stroke-width="1.2" fill="none"/>
+  <!-- 入口管 -->
+  <path d="M6 12 L4 12 L4 10 L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- 出口管 -->
+  <path d="M18 12 L20 12 L20 10 L22 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- 流动箭头 -->
+  <path d="M20 10 L21 10 M21 10 L20 9 M21 10 L20 11" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+  <!-- 中心轴 -->
+  <circle cx="12" cy="12" r="1.5" fill="currentColor"/>
+</svg>

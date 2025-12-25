@@ -40,11 +40,8 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 
-// 导入认证服务
-import { authService } from '../services/auth-service';
-
 // 导入认证状态管理
-import { useAuth } from '../stores/auth-store';
+import { useAuthStore } from '../stores/auth-store';
 
 /**
  * 密码修改页面属性接口
@@ -100,7 +97,7 @@ interface PasswordStrength {
  */
 export function ChangePasswordPage({ onNavigateToProfile }: ChangePasswordPageProps) {
   // 认证状态管理
-  const { changePassword, loading: authLoading, error: authError, clearError } = useAuth();
+  const { changePassword, loading: authLoading, error: authError, clearError } = useAuthStore();
 
   // 表单数据状态
   const [formData, setFormData] = useState<ChangePasswordFormData>({

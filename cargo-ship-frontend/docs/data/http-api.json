@@ -1,0 +1,6788 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/": {
+      "get": {
+        "operationId": "AppController_getHello",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "App"
+        ]
+      }
+    },
+    "/api/auth/register": {
+      "post": {
+        "operationId": "AuthController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "用户注册成功"
+          },
+          "400": {
+            "description": "输入数据验证失败"
+          },
+          "409": {
+            "description": "用户名或邮箱已存在"
+          }
+        },
+        "summary": "用户注册",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "登录成功，返回访问令牌和刷新令牌"
+          },
+          "401": {
+            "description": "用户名或密码错误"
+          }
+        },
+        "summary": "用户登录",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/refresh": {
+      "post": {
+        "operationId": "AuthController_refresh",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshTokenDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "成功刷新访问令牌"
+          },
+          "401": {
+            "description": "刷新令牌无效或已过期"
+          }
+        },
+        "summary": "刷新访问令牌",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "operationId": "AuthController_logout",
+        "parameters": [],
+        "responses": {
+          "204": {
+            "description": "登出成功"
+          },
+          "401": {
+            "description": "未提供或无效的访问令牌"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "用户登出",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/change-password": {
+      "post": {
+        "operationId": "AuthController_changePassword",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangePasswordDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "密码修改成功"
+          },
+          "400": {
+            "description": "旧密码错误或新密码不符合要求"
+          },
+          "401": {
+            "description": "未提供或无效的访问令牌"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "修改当前用户密码",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/profile": {
+      "get": {
+        "operationId": "AuthController_getProfile",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "成功获取用户信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未提供或无效的访问令牌"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取当前用户信息",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/users": {
+      "get": {
+        "operationId": "AuthController_findAllUsers",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "当前页码（从1开始）",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页记录数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取用户列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "查询成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/User"
+                          }
+                        },
+                        "total": {
+                          "type": "number",
+                          "example": 100
+                        },
+                        "page": {
+                          "type": "number",
+                          "example": 1
+                        },
+                        "pageSize": {
+                          "type": "number",
+                          "example": 20
+                        },
+                        "totalPages": {
+                          "type": "number",
+                          "example": 5
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1734567890123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取所有用户列表 (管理员)",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      },
+      "post": {
+        "operationId": "AuthController_createUser",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "用户创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "输入数据验证失败"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "409": {
+            "description": "用户名或邮箱已存在"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建新用户 (管理员)",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/auth/users/{id}": {
+      "get": {
+        "operationId": "AuthController_findUserById",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "用户ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取用户",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "用户不存在"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "根据ID获取单个用户 (管理员)",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      },
+      "put": {
+        "operationId": "AuthController_updateUser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "用户ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateUserDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "用户更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/User"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "用户不存在"
+          },
+          "409": {
+            "description": "用户名或邮箱与他人冲突"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新用户信息 (管理员)",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      },
+      "delete": {
+        "operationId": "AuthController_deleteUser",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "用户ID",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "用户删除成功"
+          },
+          "400": {
+            "description": "不能删除最后一个管理员"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "用户不存在"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除用户 (管理员)",
+        "tags": [
+          "认证与授权 (Auth)"
+        ]
+      }
+    },
+    "/api/equipment": {
+      "post": {
+        "description": "提供设备的基本信息来创建一条新的设备记录",
+        "operationId": "EquipmentController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEquipmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "设备创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Equipment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数验证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:create 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "设备编号已存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建新设备",
+        "tags": [
+          "设备管理"
+        ]
+      },
+      "get": {
+        "description": "分页查询设备列表，支持按类型、状态和关键词进行筛选",
+        "operationId": "EquipmentController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码（从1开始）",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "limit",
+            "required": false,
+            "in": "query",
+            "description": "每页数量",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "deviceType",
+            "required": false,
+            "in": "query",
+            "description": "设备类型筛选",
+            "schema": {
+              "example": "主机",
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "设备状态筛选",
+            "schema": {
+              "example": "normal",
+              "type": "string",
+              "enum": [
+                "normal",
+                "warning",
+                "fault",
+                "offline"
+              ]
+            }
+          },
+          {
+            "name": "keyword",
+            "required": false,
+            "in": "query",
+            "description": "关键词搜索（设备编号或名称）",
+            "schema": {
+              "example": "ENG",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取设备列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "查询成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/Equipment"
+                          }
+                        },
+                        "total": {
+                          "type": "number",
+                          "example": 100
+                        },
+                        "page": {
+                          "type": "number",
+                          "example": 1
+                        },
+                        "pageSize": {
+                          "type": "number",
+                          "example": 10
+                        },
+                        "totalPages": {
+                          "type": "number",
+                          "example": 10
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1734567890123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询设备列表",
+        "tags": [
+          "设备管理"
+        ]
+      }
+    },
+    "/api/equipment/statistics": {
+      "get": {
+        "description": "获取所有设备按状态（正常、告警、故障、离线）分类的数量统计。",
+        "operationId": "EquipmentController_getStatistics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回设备状态统计数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "normal": {
+                      "type": "number",
+                      "description": "正常状态设备数量",
+                      "example": 10
+                    },
+                    "warning": {
+                      "type": "number",
+                      "description": "告警状态设备数量",
+                      "example": 3
+                    },
+                    "fault": {
+                      "type": "number",
+                      "description": "故障状态设备数量",
+                      "example": 1
+                    },
+                    "offline": {
+                      "type": "number",
+                      "description": "离线状态设备数量",
+                      "example": 2
+                    },
+                    "total": {
+                      "type": "number",
+                      "description": "设备总数",
+                      "example": 16
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取设备统计信息",
+        "tags": [
+          "设备管理"
+        ]
+      }
+    },
+    "/api/equipment/{id}": {
+      "get": {
+        "description": "根据设备的唯一ID查询其详细信息。",
+        "operationId": "EquipmentController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "设备ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回设备详细信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Equipment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "设备ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在或已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询设备详情",
+        "tags": [
+          "设备管理"
+        ]
+      },
+      "patch": {
+        "description": "更新指定设备的部分或全部信息。",
+        "operationId": "EquipmentController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "设备ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEquipmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功，返回更新后的设备信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Equipment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数验证失败或设备ID格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:update 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在或已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "设备编号与现有其他设备冲突",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新设备信息",
+        "tags": [
+          "设备管理"
+        ]
+      },
+      "delete": {
+        "description": "软删除指定设备，记录将保留在数据库中但无法通过常规查询获取。",
+        "operationId": "EquipmentController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "设备ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "设备删除成功"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "设备ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:delete 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在或已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除设备",
+        "tags": [
+          "设备管理"
+        ]
+      }
+    },
+    "/api/equipment/{id}/status": {
+      "patch": {
+        "description": "快速更新指定设备的运行状态。",
+        "operationId": "EquipmentController_updateStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "设备ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "type": "string",
+                    "enum": [
+                      "normal",
+                      "warning",
+                      "fault",
+                      "offline"
+                    ],
+                    "description": "目标状态",
+                    "example": "warning"
+                  }
+                },
+                "required": [
+                  "status"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "状态更新成功，返回更新后的设备信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Equipment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数验证失败或设备ID格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:update 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在或已被删除",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "单独更新设备状态",
+        "tags": [
+          "设备管理"
+        ]
+      }
+    },
+    "/api/equipment/{id}/restore": {
+      "post": {
+        "description": "将被软删除的设备恢复为可用状态。",
+        "operationId": "EquipmentController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "设备ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "恢复成功，返回恢复后的设备信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Equipment"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "设备ID格式错误或设备未被删除，无需恢复",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:create 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "恢复已删除的设备",
+        "tags": [
+          "设备管理"
+        ]
+      }
+    },
+    "/api/monitoring/data": {
+      "post": {
+        "description": "接收并存储单条设备监测数据，成功后返回数据ID",
+        "operationId": "MonitoringController_receiveMonitoringData",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTimeSeriesDataDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "接收成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "success"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "dataId": {
+                          "type": "number",
+                          "example": 123456
+                        },
+                        "received": {
+                          "type": "boolean",
+                          "example": true
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1700000000000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数验证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:create 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "接收单条监测数据",
+        "tags": [
+          "监测数据"
+        ]
+      },
+      "get": {
+        "description": "根据设备、指标类型、时间范围查询监测数据，支持分页",
+        "operationId": "MonitoringController_queryMonitoringData",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": true,
+            "in": "query",
+            "description": "设备唯一标识（UUID格式）",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          },
+          {
+            "name": "metricType",
+            "required": false,
+            "in": "query",
+            "description": "指标类型（可选）",
+            "schema": {
+              "example": "vibration",
+              "type": "string",
+              "enum": [
+                "vibration",
+                "temperature",
+                "pressure",
+                "humidity",
+                "speed",
+                "current",
+                "voltage",
+                "power",
+                "frequency",
+                "level",
+                "resistance",
+                "switch"
+              ]
+            }
+          },
+          {
+            "name": "monitoringPoint",
+            "required": false,
+            "in": "query",
+            "description": "监测点名称（可选，用于筛选特定监测点）",
+            "schema": {
+              "maxLength": 100,
+              "example": "总电压",
+              "type": "string"
+            }
+          },
+          {
+            "name": "startTime",
+            "required": true,
+            "in": "query",
+            "description": "开始时间戳（毫秒）",
+            "schema": {
+              "example": 1700000000000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endTime",
+            "required": true,
+            "in": "query",
+            "description": "结束时间戳（毫秒）",
+            "schema": {
+              "example": 1700086400000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码（从1开始）",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 1000,
+              "default": 100,
+              "example": 100,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取监测数据列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "查询成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/TimeSeriesData"
+                          }
+                        },
+                        "total": {
+                          "type": "number",
+                          "example": 1000
+                        },
+                        "page": {
+                          "type": "number",
+                          "example": 1
+                        },
+                        "pageSize": {
+                          "type": "number",
+                          "example": 20
+                        },
+                        "totalPages": {
+                          "type": "number",
+                          "example": 50
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1734567890123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询监测数据",
+        "tags": [
+          "监测数据"
+        ]
+      }
+    },
+    "/api/monitoring/data/batch": {
+      "post": {
+        "description": "批量接收并存储设备监测数据，最多1000条/次",
+        "operationId": "MonitoringController_receiveBatchMonitoringData",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateBatchTimeSeriesDataDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "接收成功，返回批量操作结果",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BatchOperationResultDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数验证失败或数据格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:create 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "批量接收监测数据",
+        "tags": [
+          "监测数据"
+        ]
+      }
+    },
+    "/api/monitoring/data/statistics": {
+      "get": {
+        "description": "获取指定设备、指标类型、时间范围的统计数据（最大值、最小值、平均值等）",
+        "operationId": "MonitoringController_getDataStatistics",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": true,
+            "in": "query",
+            "description": "设备ID（UUID格式）",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "metricType",
+            "required": true,
+            "in": "query",
+            "description": "指标类型",
+            "schema": {
+              "enum": [
+                "vibration",
+                "temperature",
+                "pressure",
+                "humidity",
+                "speed",
+                "current",
+                "voltage",
+                "power",
+                "frequency",
+                "level",
+                "resistance",
+                "switch"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "startTime",
+            "required": true,
+            "in": "query",
+            "description": "开始时间戳（毫秒）",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "endTime",
+            "required": true,
+            "in": "query",
+            "description": "结束时间戳（毫秒）",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回统计数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataStatisticsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误或参数验证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取数据统计信息",
+        "tags": [
+          "监测数据"
+        ]
+      }
+    },
+    "/api/thresholds": {
+      "post": {
+        "description": "创建新的告警阈值配置规则，用于监测设备指标异常",
+        "operationId": "AlarmController_createThreshold",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateThresholdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "阈值配置创建成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThresholdConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数验证失败或设备ID格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:create 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "创建阈值配置",
+        "tags": [
+          "告警管理"
+        ]
+      },
+      "get": {
+        "description": "分页查询阈值配置列表，支持按设备ID、指标类型、严重程度筛选",
+        "operationId": "AlarmController_findAllThresholds",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": false,
+            "in": "query",
+            "description": "设备ID",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          },
+          {
+            "name": "metricType",
+            "required": false,
+            "in": "query",
+            "description": "监测指标类型",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "vibration",
+                "temperature",
+                "pressure",
+                "humidity",
+                "speed",
+                "current",
+                "voltage",
+                "power",
+                "frequency",
+                "level",
+                "resistance",
+                "switch"
+              ]
+            }
+          },
+          {
+            "name": "monitoringPoint",
+            "required": false,
+            "in": "query",
+            "description": "监测点名称（可选，用于筛选特定监测点）",
+            "schema": {
+              "maxLength": 100,
+              "example": "总电压",
+              "type": "string"
+            }
+          },
+          {
+            "name": "ruleStatus",
+            "required": false,
+            "in": "query",
+            "description": "规则状态",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "enabled",
+                "disabled"
+              ]
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码（从1开始）",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回分页数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询阈值列表",
+        "tags": [
+          "告警管理"
+        ]
+      }
+    },
+    "/api/thresholds/{id}": {
+      "get": {
+        "description": "根据ID获取单个阈值配置的详细信息",
+        "operationId": "AlarmController_findOneThreshold",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "阈值配置ID（UUID格式）",
+            "schema": {
+              "format": "uuid",
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThresholdConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID格式错误（非UUID格式）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "阈值配置不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询阈值详情",
+        "tags": [
+          "告警管理"
+        ]
+      },
+      "put": {
+        "description": "修改现有阈值配置的参数（上下限、持续时间、严重程度等）",
+        "operationId": "AlarmController_updateThreshold",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "阈值配置ID（UUID格式）",
+            "schema": {
+              "format": "uuid",
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateThresholdDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ThresholdConfig"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID格式错误或参数验证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:update 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "阈值配置不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新阈值配置",
+        "tags": [
+          "告警管理"
+        ]
+      },
+      "delete": {
+        "description": "删除指定的阈值配置规则",
+        "operationId": "AlarmController_deleteThreshold",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "阈值配置ID（UUID格式）",
+            "schema": {
+              "format": "uuid",
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功"
+          },
+          "400": {
+            "description": "ID格式错误（非UUID格式）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:delete 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "阈值配置不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除阈值配置",
+        "tags": [
+          "告警管理"
+        ]
+      }
+    },
+    "/api/alarms": {
+      "get": {
+        "description": "分页查询告警记录列表，支持按设备ID、严重程度、处理状态筛选",
+        "operationId": "AlarmController_findAllAlarms",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": false,
+            "in": "query",
+            "description": "设备ID",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          },
+          {
+            "name": "monitoringPoint",
+            "required": false,
+            "in": "query",
+            "description": "监测点名称（可选，用于筛选特定监测点的告警）",
+            "schema": {
+              "maxLength": 100,
+              "example": "总电压",
+              "type": "string"
+            }
+          },
+          {
+            "name": "severity",
+            "required": false,
+            "in": "query",
+            "description": "严重程度",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "处理状态",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "processing",
+                "resolved",
+                "ignored"
+              ]
+            }
+          },
+          {
+            "name": "startTime",
+            "required": false,
+            "in": "query",
+            "description": "开始时间（Unix时间戳毫秒）",
+            "schema": {
+              "example": 1700000000000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endTime",
+            "required": false,
+            "in": "query",
+            "description": "结束时间（Unix时间戳毫秒）",
+            "schema": {
+              "example": 1700086400000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码（从1开始）",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页条数",
+            "schema": {
+              "minimum": 1,
+              "maximum": 100,
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回分页数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PaginatedResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询告警列表",
+        "tags": [
+          "告警管理"
+        ]
+      }
+    },
+    "/api/alarms/{id}": {
+      "get": {
+        "description": "根据ID获取单个告警记录的详细信息",
+        "operationId": "AlarmController_findOneAlarm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "告警记录ID（UUID格式）",
+            "schema": {
+              "format": "uuid",
+              "example": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlarmRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID格式错误（非UUID格式）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "告警记录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询告警详情",
+        "tags": [
+          "告警管理"
+        ]
+      },
+      "put": {
+        "description": "修改告警记录的处理状态（待处理、处理中、已解决、已忽略）",
+        "operationId": "AlarmController_updateAlarmStatus",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "告警记录ID（UUID格式）",
+            "schema": {
+              "format": "uuid",
+              "example": "b2c3d4e5-f6a7-8901-bcde-f12345678901",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateAlarmStatusDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "更新成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlarmRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "ID格式错误或参数验证失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:update 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "告警记录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新告警状态",
+        "tags": [
+          "告警管理"
+        ]
+      }
+    },
+    "/api/reports/health": {
+      "post": {
+        "description": "根据指定的设备ID和时间范围，立即触发一次新的健康评估，并同步返回生成的报告。",
+        "operationId": "ReportController_generateReport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateHealthReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "生成成功，返回新的报告实体",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数验证失败或设备ID格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:create 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "按需生成新的健康评估报告 (同步)",
+        "tags": [
+          "健康报告"
+        ]
+      },
+      "get": {
+        "description": "分页查询健康评估报告列表，支持按设备ID、报告类型筛选",
+        "operationId": "ReportController_findAll",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": false,
+            "in": "query",
+            "description": "设备ID（仅查询单设备报告）",
+            "schema": {
+              "example": "SYS-BILGE-001",
+              "type": "string"
+            }
+          },
+          {
+            "name": "reportType",
+            "required": false,
+            "in": "query",
+            "description": "报告类型",
+            "schema": {
+              "example": "single",
+              "type": "string",
+              "enum": [
+                "single",
+                "aggregate"
+              ]
+            }
+          },
+          {
+            "name": "startTime",
+            "required": false,
+            "in": "query",
+            "description": "生成时间-开始（时间戳，毫秒）",
+            "schema": {
+              "example": 1700000000000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endTime",
+            "required": false,
+            "in": "query",
+            "description": "生成时间-结束（时间戳，毫秒）",
+            "schema": {
+              "example": 1700086400000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码（从1开始）",
+            "schema": {
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页数量",
+            "schema": {
+              "default": 20,
+              "example": 20,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取健康报告列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "查询成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/HealthReport"
+                          }
+                        },
+                        "total": {
+                          "type": "number",
+                          "example": 50
+                        },
+                        "page": {
+                          "type": "number",
+                          "example": 1
+                        },
+                        "pageSize": {
+                          "type": "number",
+                          "example": 20
+                        },
+                        "totalPages": {
+                          "type": "number",
+                          "example": 3
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1734567890123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询报告列表",
+        "tags": [
+          "健康报告"
+        ]
+      }
+    },
+    "/api/reports/health/{id}": {
+      "get": {
+        "description": "根据ID查询单个健康评估报告的详细信息",
+        "operationId": "ReportController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "报告ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回报告详细信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "报告ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "报告不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询报告详情",
+        "tags": [
+          "健康报告"
+        ]
+      },
+      "put": {
+        "description": "更新报告的备注和附加说明（不允许修改核心数据）",
+        "operationId": "ReportController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "报告ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateHealthReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "报告更新成功，返回更新后的报告信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthReport"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "请求参数验证失败或报告ID格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:update 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "报告不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "更新报告",
+        "tags": [
+          "健康报告"
+        ]
+      },
+      "delete": {
+        "description": "删除指定的健康评估报告（物理删除）",
+        "operationId": "ReportController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "报告ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "报告删除成功"
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1700000000000
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "报告ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:delete 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "报告不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除报告",
+        "tags": [
+          "健康报告"
+        ]
+      }
+    },
+    "/api/reports/health/{id}/export": {
+      "get": {
+        "description": "将指定的健康评估报告导出为Excel文件",
+        "operationId": "ReportController_exportReport",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "报告ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "导出成功，返回Excel文件流",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "报告ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:export 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "报告不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "导出报告为Excel",
+        "tags": [
+          "健康报告"
+        ]
+      }
+    },
+    "/api/imports/template/{format}": {
+      "get": {
+        "description": "\n      下载标准的时序数据导入模板文件。\n\n      支持格式:\n      - excel: 下载 .xlsx 格式模板（适合批量导入）\n      - csv: 下载 .csv 格式模板（适合批量导入）\n      - json: 下载 .json 格式模板（适合API集成）\n\n      **设备ID清单（严格区分大小写）：**\n      - SYS-BAT-001 - 电池系统\n      - SYS-PROP-L-001 - 左推进系统\n      - SYS-PROP-R-001 - 右推进系统\n      - SYS-INV-1-001 - 1#日用逆变器系统\n      - SYS-INV-2-001 - 2#日用逆变器系统\n      - SYS-DCPD-001 - 直流配电板系统\n      - SYS-BILGE-001 - 舱底水系统\n      - SYS-COOL-001 - 冷却水泵系统\n\n      **Excel/CSV 模板字段:**\n      - 设备ID (必填): 设备的唯一标识符，如 SYS-BAT-001\n      - 时间戳 (必填): YYYY-MM-DD HH:mm:ss 格式\n      - 监测点 (必填): 业务监测点名称（中文），如\"总电压\"、\"电机转速\"\n      - 指标类型 (必填): voltage, current, temperature, speed, power 等\n      - 数值 (必填): 监测数值\n      - 单位 (可选): 如 V、A、°C、rpm 等\n      - 数据质量 (可选): 正常、异常、疑似\n\n      **JSON 模板结构:**\n      [{\n        \"equipmentId\": \"SYS-BAT-001\",\n        \"equipmentName\": \"电池系统\",\n        \"timestamp\": \"2025-01-01T10:00:00Z\",\n        \"metrics\": [\n          {\n            \"monitoringPoint\": \"总电压\",\n            \"metricType\": \"voltage\",\n            \"value\": 650.5,\n            \"unit\": \"V\"\n          }\n        ]\n      }]\n\n      **注意事项:**\n      - 设备ID必须使用系统级格式（SYS-XXX-001），不支持旧格式\n      - 监测点名称必须使用中文，且与系统定义严格匹配\n      - 完整监测点列表请参考系统文档\n    ",
+        "operationId": "ImportController_downloadTemplate",
+        "parameters": [
+          {
+            "name": "format",
+            "required": true,
+            "in": "path",
+            "description": "模板格式",
+            "schema": {
+              "enum": [
+                "excel",
+                "csv",
+                "json"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "模板文件下载成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "模板文件不存在或格式不支持",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "下载数据导入模板",
+        "tags": [
+          "数据导入"
+        ]
+      }
+    },
+    "/api/imports/upload": {
+      "post": {
+        "description": "\n      上传 Excel 或 CSV 格式的时序数据文件，系统将解析文件并返回预览数据（前100行）。\n\n      **重要字段说明：**\n\n      必填字段：\n      - 设备ID: 设备的唯一标识符\n      - 时间戳: YYYY-MM-DD HH:mm:ss 格式\n      - 指标类型: 电压、温度、转速等\n      - 数值: 监测数值\n\n      可选但强烈推荐的字段：\n      - **监测点**: 业务监测点名称（如\"总电压\"、\"单体最高温度\"）\n        * 用于精确匹配告警规则\n        * 不填写可能导致部分告警无法触发\n        * 最大长度: 100字符\n        * 示例: \"总电压\"、\"单体最高温度\"、\"左主机转速\"\n\n      其他可选字段：\n      - 单位: 如 V、℃、rpm 等\n      - 数据质量: 正常、异常、疑似\n\n      **下载标准模板：** GET /api/imports/template/excel 或 GET /api/imports/template/csv\n    ",
+        "operationId": "ImportController_uploadFile",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "要上传的文件（Excel或CSV）"
+                  },
+                  "fileFormat": {
+                    "type": "string",
+                    "enum": [
+                      "excel",
+                      "csv"
+                    ],
+                    "description": "文件格式"
+                  },
+                  "duplicateStrategy": {
+                    "type": "string",
+                    "enum": [
+                      "skip",
+                      "overwrite"
+                    ],
+                    "description": "重复数据处理策略"
+                  },
+                  "remarks": {
+                    "type": "string",
+                    "description": "备注信息"
+                  }
+                },
+                "required": [
+                  "file",
+                  "fileFormat"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "文件上传成功，返回导入记录和预览数据",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "importRecord": {
+                      "type": "object",
+                      "description": "导入记录"
+                    },
+                    "previewData": {
+                      "type": "array",
+                      "description": "预览数据（前100行）"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "文件格式错误或解析失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:import 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "上传文件并解析预览",
+        "tags": [
+          "数据导入"
+        ]
+      }
+    },
+    "/api/imports/execute": {
+      "post": {
+        "operationId": "ImportController_executeImport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ImportDataDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "导入执行完成，返回更新后的导入记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "导入任务状态不允许执行"
+          },
+          "401": {
+            "description": "未授权，请先登录"
+          },
+          "403": {
+            "description": "权限不足"
+          },
+          "404": {
+            "description": "导入记录不存在"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "执行数据导入",
+        "tags": [
+          "数据导入"
+        ]
+      }
+    },
+    "/api/imports/upload-and-import": {
+      "post": {
+        "description": "\n      上传文件并立即执行导入，返回完整的导入记录（包括成功/失败统计）。\n\n      **导入后自动执行的增强功能：**\n      1. **历史告警回溯**: 对导入的每条数据评估告警阈值，自动生成历史告警记录\n      2. **实时数据推送**: 通过 WebSocket 推送每个设备的最新数据（事件名: import:latest-data）\n\n      **重要提示：**\n      - 强烈建议在文件中包含\"监测点\"列，以确保告警规则能够精确匹配\n      - 不填写监测点可能导致部分告警无法触发\n      - 下载标准模板: GET /api/imports/template/excel 或 GET /api/imports/template/csv\n\n      **字段说明：**\n      - 设备ID (必填): 设备唯一标识符\n      - 时间戳 (必填): YYYY-MM-DD HH:mm:ss 格式\n      - 监测点 (可选但推荐): 业务监测点名称，如\"总电压\"、\"单体最高温度\"\n      - 指标类型 (必填): 电压、温度、转速等\n      - 数值 (必填): 监测数值\n      - 单位 (可选): V、℃、rpm 等\n      - 数据质量 (可选): 正常、异常、疑似\n    ",
+        "operationId": "ImportController_uploadAndImport",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "type": "string",
+                    "format": "binary",
+                    "description": "要上传的文件"
+                  },
+                  "fileFormat": {
+                    "type": "string",
+                    "enum": [
+                      "excel",
+                      "csv"
+                    ]
+                  },
+                  "duplicateStrategy": {
+                    "type": "string",
+                    "enum": [
+                      "skip",
+                      "overwrite"
+                    ]
+                  },
+                  "skipInvalidRows": {
+                    "type": "boolean",
+                    "description": "是否跳过无效行"
+                  },
+                  "remarks": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "file",
+                  "fileFormat",
+                  "duplicateStrategy"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "导入完成，返回导入记录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "文件格式错误或解析失败",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:import 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "上传文件并立即执行导入",
+        "tags": [
+          "数据导入"
+        ]
+      }
+    },
+    "/api/imports": {
+      "get": {
+        "description": "分页查询导入记录列表，支持按状态、文件格式等条件筛选",
+        "operationId": "ImportController_findAll",
+        "parameters": [
+          {
+            "name": "page",
+            "required": false,
+            "in": "query",
+            "description": "页码",
+            "schema": {
+              "minimum": 1,
+              "default": 1,
+              "example": 1,
+              "type": "number"
+            }
+          },
+          {
+            "name": "pageSize",
+            "required": false,
+            "in": "query",
+            "description": "每页数量",
+            "schema": {
+              "minimum": 1,
+              "default": 10,
+              "example": 10,
+              "type": "number"
+            }
+          },
+          {
+            "name": "status",
+            "required": false,
+            "in": "query",
+            "description": "导入状态",
+            "schema": {
+              "example": "completed",
+              "type": "string",
+              "enum": [
+                "pending",
+                "processing",
+                "completed",
+                "partial",
+                "failed"
+              ]
+            }
+          },
+          {
+            "name": "fileFormat",
+            "required": false,
+            "in": "query",
+            "description": "文件格式",
+            "schema": {
+              "example": "excel",
+              "type": "string",
+              "enum": [
+                "excel",
+                "csv",
+                "json"
+              ]
+            }
+          },
+          {
+            "name": "startDate",
+            "required": false,
+            "in": "query",
+            "description": "开始日期",
+            "schema": {
+              "example": "2024-01-01T00:00:00.000Z",
+              "type": "string"
+            }
+          },
+          {
+            "name": "endDate",
+            "required": false,
+            "in": "query",
+            "description": "结束日期",
+            "schema": {
+              "example": "2024-12-31T23:59:59.999Z",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "成功获取导入记录列表",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "code": {
+                      "type": "number",
+                      "example": 200
+                    },
+                    "message": {
+                      "type": "string",
+                      "example": "查询成功"
+                    },
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "$ref": "#/components/schemas/ImportRecord"
+                          }
+                        },
+                        "total": {
+                          "type": "number",
+                          "example": 50
+                        },
+                        "page": {
+                          "type": "number",
+                          "example": 1
+                        },
+                        "pageSize": {
+                          "type": "number",
+                          "example": 20
+                        },
+                        "totalPages": {
+                          "type": "number",
+                          "example": 3
+                        }
+                      }
+                    },
+                    "timestamp": {
+                      "type": "number",
+                      "example": 1734567890123
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "查询参数格式错误",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询导入记录列表",
+        "tags": [
+          "数据导入"
+        ]
+      }
+    },
+    "/api/imports/{id}": {
+      "get": {
+        "description": "根据ID查询单个导入记录的详细信息，包含完整的错误信息和统计数据",
+        "operationId": "ImportController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "导入记录ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "返回导入记录详情",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ImportRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "导入记录ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "导入记录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "查询导入记录详情",
+        "tags": [
+          "数据导入"
+        ]
+      },
+      "delete": {
+        "description": "删除指定的导入记录（物理删除）",
+        "operationId": "ImportController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "导入记录ID (UUID格式)",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "删除成功",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {}
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "导入记录ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:delete 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "导入记录不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "删除导入记录",
+        "tags": [
+          "数据导入"
+        ]
+      }
+    },
+    "/api/statistics/monitoring": {
+      "get": {
+        "description": "对指定设备的监测指标进行统计分析，计算最大值、最小值、平均值和标准差",
+        "operationId": "QueryController_getMonitoringStatistics",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": true,
+            "in": "query",
+            "description": "设备ID（UUID格式）",
+            "schema": {
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "type": "string"
+            }
+          },
+          {
+            "name": "metricType",
+            "required": true,
+            "in": "query",
+            "description": "监测指标类型",
+            "schema": {
+              "example": "temperature",
+              "type": "string",
+              "enum": [
+                "vibration",
+                "temperature",
+                "pressure",
+                "humidity",
+                "speed",
+                "current",
+                "voltage",
+                "power",
+                "frequency",
+                "level",
+                "resistance",
+                "switch"
+              ]
+            }
+          },
+          {
+            "name": "startTime",
+            "required": true,
+            "in": "query",
+            "description": "开始时间（Unix时间戳，毫秒）",
+            "schema": {
+              "example": 1700000000000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endTime",
+            "required": true,
+            "in": "query",
+            "description": "结束时间（Unix时间戳，毫秒）",
+            "schema": {
+              "example": 1700086400000,
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "统计成功，返回监测数据统计信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MonitoringStatsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或时间范围无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:read 和 sensor_data:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "监测数据统计",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/statistics/alarms": {
+      "get": {
+        "description": "统计指定时间范围内的告警数据，按严重程度和处理状态分组",
+        "operationId": "QueryController_getAlarmStatistics",
+        "parameters": [
+          {
+            "name": "equipmentId",
+            "required": false,
+            "in": "query",
+            "description": "设备ID（可选，不填则统计所有设备）",
+            "schema": {
+              "example": "550e8400-e29b-41d4-a716-446655440000",
+              "type": "string"
+            }
+          },
+          {
+            "name": "startTime",
+            "required": true,
+            "in": "query",
+            "description": "开始时间（Unix时间戳，毫秒）",
+            "schema": {
+              "example": 1700000000000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "endTime",
+            "required": true,
+            "in": "query",
+            "description": "结束时间（Unix时间戳，毫秒）",
+            "schema": {
+              "example": 1700086400000,
+              "type": "number"
+            }
+          },
+          {
+            "name": "severity",
+            "required": false,
+            "in": "query",
+            "description": "严重程度筛选（可选）",
+            "schema": {
+              "enum": [
+                "low",
+                "medium",
+                "high",
+                "critical"
+              ],
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "统计成功，返回告警统计信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AlarmStatsResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或时间范围无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "告警统计",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/statistics/equipment": {
+      "get": {
+        "description": "获取所有设备的状态统计概览，包括在线、离线和异常设备数量",
+        "operationId": "QueryController_getEquipmentOverview",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回设备状态概览",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EquipmentOverviewDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "设备状态概览",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/equipment/{id}/profile": {
+      "get": {
+        "description": "获取设备的完整档案信息，包括基本信息、监测数据统计、告警统计等",
+        "operationId": "QueryController_getEquipmentCompleteProfile",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "设备ID（UUID格式）",
+            "schema": {
+              "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "查询成功，返回设备完整档案",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "equipment": {
+                      "type": "object",
+                      "description": "设备基本信息"
+                    },
+                    "monitoringStats": {
+                      "type": "object",
+                      "description": "监测数据统计"
+                    },
+                    "alarmStats": {
+                      "type": "object",
+                      "description": "告警统计"
+                    },
+                    "healthScore": {
+                      "type": "number",
+                      "description": "健康评分",
+                      "example": 85
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "设备ID格式错误（非有效的UUID）",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 device:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "设备不存在",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "获取设备完整档案",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/export/monitoring": {
+      "post": {
+        "description": "根据查询条件导出监测数据为Excel或CSV文件",
+        "operationId": "QueryController_exportMonitoringData",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportMonitoringDataDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "导出成功，返回导出文件信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或导出条件无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 sensor_data:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "导出监测数据",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/export/alarms": {
+      "post": {
+        "description": "根据查询条件导出告警记录为Excel或CSV文件",
+        "operationId": "QueryController_exportAlarms",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportAlarmsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "导出成功，返回导出文件信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或导出条件无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 alert:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "导出告警记录",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/export/reports": {
+      "post": {
+        "description": "根据查询条件导出健康评估报告为PDF文件",
+        "operationId": "QueryController_exportReports",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ExportReportsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "导出成功，返回导出文件信息",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExportResponseDto"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "参数错误或导出条件无效",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "未授权，需要登录",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "权限不足，需要 report:read 权限",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "未找到符合条件的报告",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "导出健康报告",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/export/download/{filename}": {
+      "get": {
+        "description": "下载已导出的文件",
+        "operationId": "QueryController_downloadFile",
+        "parameters": [
+          {
+            "name": "filename",
+            "required": true,
+            "in": "path",
+            "description": "文件名",
+            "schema": {
+              "example": "monitoring-data-2025-12-15.xlsx",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "下载成功，返回文件流",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "string",
+                  "format": "binary"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "文件不存在或已过期",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "下载导出文件",
+        "tags": [
+          "统计与导出"
+        ]
+      }
+    },
+    "/api/systemmonitoring/metrics": {
+      "get": {
+        "operationId": "SystemMonitoringController_getMetrics",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SystemMonitoring"
+        ]
+      }
+    },
+    "/api/systemmonitoring/summary": {
+      "get": {
+        "operationId": "SystemMonitoringController_getPerformanceSummary",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SystemMonitoring"
+        ]
+      }
+    },
+    "/api/systemmonitoring/websocket": {
+      "get": {
+        "operationId": "SystemMonitoringController_getWebSocketStatus",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SystemMonitoring"
+        ]
+      }
+    },
+    "/api/systemmonitoring/cache": {
+      "get": {
+        "operationId": "SystemMonitoringController_getCacheStats",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SystemMonitoring"
+        ]
+      }
+    },
+    "/api/systemmonitoring/cache/clear": {
+      "get": {
+        "operationId": "SystemMonitoringController_clearCache",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SystemMonitoring"
+        ]
+      }
+    },
+    "/api/systemmonitoring/health": {
+      "get": {
+        "operationId": "SystemMonitoringController_healthCheck",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "SystemMonitoring"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "TDuCargoShipsManagement API",
+    "description": "船舶机舱设备监测管理系统 API 文档",
+    "version": "1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "RegisterDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名 (3-50位, 字母/数字/下划线/连字符)",
+            "example": "john_doe"
+          },
+          "email": {
+            "type": "string",
+            "description": "用户邮箱地址",
+            "example": "john.doe@example.com"
+          },
+          "password": {
+            "type": "string",
+            "description": "用户密码 (至少8位,包含大小写字母、数字和特殊字符)",
+            "example": "Password123!"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "用户全名",
+            "example": "John Doe"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "description": "手机号码 (可选)",
+            "example": "+86 138-1234-5678"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password",
+          "fullName"
+        ]
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名或邮箱地址",
+            "example": "admin",
+            "minLength": 1
+          },
+          "password": {
+            "type": "string",
+            "description": "用户密码",
+            "example": "password123",
+            "minLength": 6
+          }
+        },
+        "required": [
+          "username",
+          "password"
+        ]
+      },
+      "RefreshTokenDto": {
+        "type": "object",
+        "properties": {
+          "refreshToken": {
+            "type": "string",
+            "description": "用于获取新访问令牌的刷新令牌",
+            "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "refreshToken"
+        ]
+      },
+      "ChangePasswordDto": {
+        "type": "object",
+        "properties": {
+          "oldPassword": {
+            "type": "string",
+            "description": "当前使用的旧密码",
+            "example": "OldPassword123!",
+            "minLength": 6
+          },
+          "newPassword": {
+            "type": "string",
+            "description": "符合强度要求的新密码",
+            "example": "NewPassword123!",
+            "minLength": 8
+          }
+        },
+        "required": [
+          "oldPassword",
+          "newPassword"
+        ]
+      },
+      "User": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "用户唯一标识符（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "username": {
+            "type": "string",
+            "description": "用户名（全局唯一）",
+            "example": "john_doe",
+            "maxLength": 50
+          },
+          "email": {
+            "type": "string",
+            "description": "邮箱地址（全局唯一）",
+            "example": "john.doe@example.com",
+            "maxLength": 100
+          },
+          "fullName": {
+            "type": "string",
+            "description": "用户全名",
+            "example": "John Doe",
+            "maxLength": 100
+          },
+          "phoneNumber": {
+            "type": "string",
+            "description": "手机号码",
+            "example": "+86 138-1234-5678",
+            "maxLength": 20
+          },
+          "status": {
+            "type": "string",
+            "description": "用户状态",
+            "enum": [
+              "active",
+              "inactive",
+              "locked",
+              "pending"
+            ],
+            "example": "active",
+            "default": "active"
+          },
+          "lastLoginAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "最后登录时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          },
+          "lastLoginIp": {
+            "type": "string",
+            "description": "最后登录IP地址",
+            "example": "192.168.1.100",
+            "maxLength": 45
+          },
+          "passwordChangedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "密码最后修改时间",
+            "example": "2024-12-01T08:00:00.000Z"
+          },
+          "roles": {
+            "description": "用户拥有的角色列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录创建时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录最后更新时间",
+            "example": "2025-01-02T15:30:00.000Z"
+          },
+          "deletedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "软删除时间",
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "username",
+          "email",
+          "fullName",
+          "status",
+          "roles",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "Permission": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "权限唯一标识符（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "name": {
+            "type": "string",
+            "description": "权限名称（全局唯一，格式：resource:action）",
+            "example": "device:create",
+            "maxLength": 100
+          },
+          "resource": {
+            "type": "string",
+            "description": "权限控制的资源类型",
+            "enum": [
+              "device",
+              "sensor_data",
+              "alert",
+              "report",
+              "user",
+              "role",
+              "permission",
+              "audit_log",
+              "system_config"
+            ],
+            "example": "device"
+          },
+          "action": {
+            "type": "string",
+            "description": "权限允许的操作类型",
+            "enum": [
+              "create",
+              "read",
+              "update",
+              "delete",
+              "manage",
+              "export",
+              "import",
+              "approve"
+            ],
+            "example": "create"
+          },
+          "description": {
+            "type": "string",
+            "description": "权限描述，说明权限的用途和范围",
+            "example": "创建新设备的权限",
+            "maxLength": 255
+          },
+          "isSystem": {
+            "type": "boolean",
+            "description": "是否为系统权限（系统权限不可删除）",
+            "example": true,
+            "default": false
+          },
+          "roles": {
+            "description": "拥有此权限的角色列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Role"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录创建时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录最后更新时间",
+            "example": "2025-01-02T15:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "resource",
+          "action",
+          "isSystem",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "Role": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "角色唯一标识符（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "name": {
+            "type": "string",
+            "description": "角色名称（全局唯一）",
+            "example": "administrator",
+            "maxLength": 50
+          },
+          "description": {
+            "type": "string",
+            "description": "角色描述，说明角色的职责和权限范围",
+            "example": "系统管理员，拥有全部权限",
+            "maxLength": 255
+          },
+          "isSystem": {
+            "type": "boolean",
+            "description": "是否为系统角色（系统角色不可删除或重命名）",
+            "example": true,
+            "default": false
+          },
+          "isActive": {
+            "type": "boolean",
+            "description": "角色是否激活",
+            "example": true,
+            "default": true
+          },
+          "users": {
+            "description": "拥有此角色的用户列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/User"
+            }
+          },
+          "permissions": {
+            "description": "角色拥有的权限列表",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Permission"
+            }
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录创建时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录最后更新时间",
+            "example": "2025-01-02T15:30:00.000Z"
+          },
+          "deletedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "软删除时间（系统角色不允许删除）",
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "isSystem",
+          "isActive",
+          "permissions",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateUserDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "用户名 (3-50位, 字母/数字/下划线/连字符)",
+            "example": "new_operator"
+          },
+          "email": {
+            "type": "string",
+            "description": "用户邮箱地址",
+            "example": "operator@example.com"
+          },
+          "password": {
+            "type": "string",
+            "description": "用户初始密码 (至少8位,包含大小写字母、数字和特殊字符)",
+            "example": "Operator123!"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "用户全名",
+            "example": "李四"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "description": "手机号码 (可选)",
+            "example": "+86 139-8765-4321"
+          },
+          "roleIds": {
+            "description": "分配给用户的角色ID数组",
+            "example": [
+              "role-uuid-operator"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "用户状态 (可选, 默认为 active)",
+            "enum": [
+              "active",
+              "inactive",
+              "locked",
+              "pending"
+            ],
+            "example": "active"
+          }
+        },
+        "required": [
+          "username",
+          "email",
+          "password",
+          "fullName",
+          "roleIds"
+        ]
+      },
+      "UpdateUserDto": {
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": "string",
+            "description": "新用户名 (3-50位, 字母/数字/下划线/连字符)",
+            "example": "john_doe_new"
+          },
+          "email": {
+            "type": "string",
+            "description": "新邮箱地址",
+            "example": "john.doe.new@example.com"
+          },
+          "password": {
+            "type": "string",
+            "description": "重置后的新密码 (至少8位,包含大小写字母、数字和特殊字符)",
+            "example": "NewPassword456!"
+          },
+          "fullName": {
+            "type": "string",
+            "description": "新用户全名",
+            "example": "Johnathan Doe"
+          },
+          "phoneNumber": {
+            "type": "string",
+            "description": "新手机号码",
+            "example": "+1 555-123-4567"
+          },
+          "roleIds": {
+            "description": "完全替换用户现有角色的ID数组",
+            "example": [
+              "role-uuid-viewer"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "status": {
+            "type": "string",
+            "description": "新用户状态 (active, inactive, locked)",
+            "enum": [
+              "active",
+              "inactive",
+              "locked",
+              "pending"
+            ],
+            "example": "inactive"
+          }
+        }
+      },
+      "Equipment": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "设备唯一ID（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "deviceId": {
+            "type": "string",
+            "description": "设备编号（唯一标识，系统级唯一）",
+            "example": "SYS-BAT-001",
+            "maxLength": 50
+          },
+          "deviceName": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "左推进电机",
+            "maxLength": 100
+          },
+          "deviceType": {
+            "type": "string",
+            "description": "设备类型（如推进电机、发电机、电池系统等）",
+            "example": "推进电机",
+            "maxLength": 50
+          },
+          "model": {
+            "type": "string",
+            "description": "设备型号",
+            "example": "PM-1500-400V",
+            "maxLength": 100
+          },
+          "manufacturer": {
+            "type": "string",
+            "description": "制造商",
+            "example": "某电机制造商",
+            "maxLength": 100
+          },
+          "location": {
+            "type": "string",
+            "description": "安装位置（如机舱左侧、甲板中央等）",
+            "example": "机舱左侧",
+            "maxLength": 100
+          },
+          "status": {
+            "type": "string",
+            "description": "设备当前运行状态",
+            "enum": [
+              "normal",
+              "warning",
+              "fault",
+              "offline"
+            ],
+            "example": "normal",
+            "default": "normal"
+          },
+          "commissionDate": {
+            "format": "date-time",
+            "type": "string",
+            "description": "投产日期",
+            "example": "2024-02-01"
+          },
+          "description": {
+            "type": "string",
+            "description": "设备详细描述",
+            "example": "永磁同步电机，额定功率1500kW，用于船舶左侧推进"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录创建时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录更新时间",
+            "example": "2025-01-02T15:30:00.000Z"
+          },
+          "deletedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "软删除时间（非空表示该设备已被删除）",
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "deviceId",
+          "deviceName",
+          "deviceType",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateEquipmentDto": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "description": "设备编号（唯一标识）",
+            "example": "ENG-001",
+            "pattern": "^[A-Z0-9-]+$"
+          },
+          "deviceName": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "主发动机",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "deviceType": {
+            "type": "string",
+            "description": "设备类型",
+            "example": "主机",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "model": {
+            "type": "string",
+            "description": "设备型号",
+            "example": "MAN B&W 6S50MC",
+            "maxLength": 100
+          },
+          "manufacturer": {
+            "type": "string",
+            "description": "制造商",
+            "example": "MAN Diesel & Turbo",
+            "maxLength": 100
+          },
+          "location": {
+            "type": "string",
+            "description": "安装位置",
+            "example": "机舱中部",
+            "maxLength": 100
+          },
+          "commissionDate": {
+            "type": "string",
+            "description": "投产日期",
+            "example": "2023-01-15",
+            "format": "date"
+          },
+          "description": {
+            "type": "string",
+            "description": "设备描述",
+            "example": "船舶主推进发动机，额定功率9000kW",
+            "maxLength": 500
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "enum": [
+              "normal",
+              "warning",
+              "fault",
+              "offline"
+            ],
+            "example": "normal",
+            "default": "normal"
+          }
+        },
+        "required": [
+          "deviceId",
+          "deviceName",
+          "deviceType"
+        ]
+      },
+      "ErrorResponseDto": {
+        "type": "object",
+        "properties": {
+          "statusCode": {
+            "type": "number",
+            "description": "HTTP 状态码",
+            "example": 400
+          },
+          "message": {
+            "description": "错误消息（单个或数组）",
+            "example": "Validation failed",
+            "oneOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "错误类型描述",
+            "example": "Bad Request"
+          },
+          "timestamp": {
+            "type": "number",
+            "description": "错误发生的时间戳（毫秒）",
+            "example": 1700000000000
+          },
+          "path": {
+            "type": "string",
+            "description": "触发错误的请求路径",
+            "example": "/api/thresholds"
+          }
+        },
+        "required": [
+          "statusCode",
+          "message",
+          "timestamp"
+        ]
+      },
+      "UpdateEquipmentDto": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "description": "设备编号（唯一标识）",
+            "example": "ENG-001",
+            "pattern": "^[A-Z0-9-]+$"
+          },
+          "deviceName": {
+            "type": "string",
+            "description": "设备名称",
+            "example": "主发动机",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "deviceType": {
+            "type": "string",
+            "description": "设备类型",
+            "example": "主机",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "model": {
+            "type": "string",
+            "description": "设备型号",
+            "example": "MAN B&W 6S50MC",
+            "maxLength": 100
+          },
+          "manufacturer": {
+            "type": "string",
+            "description": "制造商",
+            "example": "MAN Diesel & Turbo",
+            "maxLength": 100
+          },
+          "location": {
+            "type": "string",
+            "description": "安装位置",
+            "example": "机舱中部",
+            "maxLength": 100
+          },
+          "commissionDate": {
+            "type": "string",
+            "description": "投产日期",
+            "example": "2023-01-15",
+            "format": "date"
+          },
+          "description": {
+            "type": "string",
+            "description": "设备描述",
+            "example": "船舶主推进发动机，额定功率9000kW",
+            "maxLength": 500
+          },
+          "status": {
+            "type": "string",
+            "description": "设备状态",
+            "enum": [
+              "normal",
+              "warning",
+              "fault",
+              "offline"
+            ],
+            "example": "normal",
+            "default": "normal"
+          }
+        }
+      },
+      "TimeSeriesData": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "description": "时序数据ID（自增主键）",
+            "example": 123456789
+          },
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "SYS-BAT-001"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string",
+            "description": "数据时间戳",
+            "example": "2025-01-15T10:30:00.000Z"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "voltage"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称，用于区分相同物理类型但业务含义不同的测量值（如\"总电压\" vs \"单体电压\"）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "value": {
+            "type": "number",
+            "description": "指标数值",
+            "example": 650.5
+          },
+          "unit": {
+            "type": "string",
+            "description": "数据单位",
+            "example": "V",
+            "maxLength": 20
+          },
+          "quality": {
+            "type": "string",
+            "description": "数据质量标记",
+            "enum": [
+              "normal",
+              "abnormal",
+              "suspicious"
+            ],
+            "example": "normal",
+            "default": "normal"
+          },
+          "source": {
+            "type": "string",
+            "description": "数据来源",
+            "enum": [
+              "sensor-upload",
+              "file-import",
+              "manual-entry"
+            ],
+            "example": "sensor-upload",
+            "default": "sensor-upload"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "创建时间",
+            "example": "2025-01-15T10:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "equipmentId",
+          "timestamp",
+          "metricType",
+          "value",
+          "quality",
+          "source",
+          "createdAt"
+        ]
+      },
+      "CreateTimeSeriesDataDto": {
+        "type": "object",
+        "properties": {
+          "equipmentId": {
+            "type": "string",
+            "description": "设备唯一标识（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "timestamp": {
+            "format": "date-time",
+            "type": "string",
+            "description": "数据时间戳",
+            "example": "2025-11-19T10:30:00.000Z"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "vibration"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称（推荐填写，用于精确标识业务监测点）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "value": {
+            "type": "number",
+            "description": "指标数值",
+            "example": 12.5,
+            "minimum": -999999.99,
+            "maximum": 999999.99
+          },
+          "unit": {
+            "type": "string",
+            "description": "数据单位（可选，未提供时使用默认值）",
+            "example": "mm/s",
+            "maxLength": 20
+          },
+          "quality": {
+            "type": "string",
+            "description": "数据质量标记（可选，默认为normal）",
+            "enum": [
+              "normal",
+              "abnormal",
+              "suspicious"
+            ],
+            "default": "normal"
+          },
+          "source": {
+            "type": "string",
+            "description": "数据来源（可选，默认为sensor-upload）",
+            "enum": [
+              "sensor-upload",
+              "file-import",
+              "manual-entry"
+            ],
+            "default": "sensor-upload"
+          }
+        },
+        "required": [
+          "equipmentId",
+          "timestamp",
+          "metricType",
+          "value"
+        ]
+      },
+      "BatchDataItemDto": {
+        "type": "object",
+        "properties": {
+          "timestamp": {
+            "format": "date-time",
+            "type": "string",
+            "description": "数据时间戳",
+            "example": "2025-11-19T10:30:00.000Z"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "vibration"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称（可选）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "value": {
+            "type": "number",
+            "description": "指标数值",
+            "example": 12.5,
+            "minimum": -999999.99,
+            "maximum": 999999.99
+          },
+          "unit": {
+            "type": "string",
+            "description": "数据单位（可选）",
+            "example": "mm/s"
+          },
+          "quality": {
+            "type": "string",
+            "description": "数据质量标记（可选）",
+            "enum": [
+              "normal",
+              "abnormal",
+              "suspicious"
+            ]
+          }
+        },
+        "required": [
+          "timestamp",
+          "metricType",
+          "value"
+        ]
+      },
+      "CreateBatchTimeSeriesDataDto": {
+        "type": "object",
+        "properties": {
+          "equipmentId": {
+            "type": "string",
+            "description": "设备唯一标识（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "data": {
+            "description": "监测数据数组（1-1000条）",
+            "minItems": 1,
+            "maxItems": 1000,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BatchDataItemDto"
+            }
+          }
+        },
+        "required": [
+          "equipmentId",
+          "data"
+        ]
+      },
+      "BatchOperationResultDto": {
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "number",
+            "description": "总操作数",
+            "example": 100
+          },
+          "successCount": {
+            "type": "number",
+            "description": "成功数量",
+            "example": 98
+          },
+          "failedCount": {
+            "type": "number",
+            "description": "失败数量",
+            "example": 2
+          },
+          "errors": {
+            "description": "错误详情列表",
+            "items": {
+              "type": "array"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "totalCount",
+          "successCount",
+          "failedCount",
+          "errors"
+        ]
+      },
+      "DataStatisticsResponseDto": {
+        "type": "object",
+        "properties": {
+          "metricType": {
+            "type": "string",
+            "description": "指标类型",
+            "example": "temperature"
+          },
+          "count": {
+            "type": "number",
+            "description": "数据点数量",
+            "example": 1000
+          },
+          "maxValue": {
+            "type": "number",
+            "description": "最大值",
+            "example": 85.5
+          },
+          "minValue": {
+            "type": "number",
+            "description": "最小值",
+            "example": 20.3
+          },
+          "avgValue": {
+            "type": "number",
+            "description": "平均值",
+            "example": 52.8
+          },
+          "unit": {
+            "type": "string",
+            "description": "测量单位",
+            "example": "℃"
+          }
+        },
+        "required": [
+          "metricType",
+          "count",
+          "maxValue",
+          "minValue",
+          "avgValue"
+        ]
+      },
+      "CreateThresholdDto": {
+        "type": "object",
+        "properties": {
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "监测指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "temperature"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称（推荐填写，用于精确匹配告警规则）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "faultName": {
+            "type": "string",
+            "description": "故障名称（推荐填写，描述具体故障类型）",
+            "example": "总压过压",
+            "maxLength": 200
+          },
+          "recommendedAction": {
+            "type": "string",
+            "description": "处理措施（可选，建议操作员采取的纠正措施）",
+            "example": "1. 检查电池单体均衡状态\n2. 检查充电系统是否正常\n3. 必要时停止充电"
+          },
+          "upperLimit": {
+            "type": "number",
+            "description": "上限值（超过此值触发告警）",
+            "example": 85.5
+          },
+          "lowerLimit": {
+            "type": "number",
+            "description": "下限值（低于此值触发告警）",
+            "example": 10
+          },
+          "duration": {
+            "type": "number",
+            "description": "持续时间（毫秒），超过阈值并持续该时间后才触发告警",
+            "example": 300000,
+            "minimum": 0
+          },
+          "severity": {
+            "type": "string",
+            "description": "严重程度",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "example": "high"
+          },
+          "ruleStatus": {
+            "type": "string",
+            "description": "规则状态",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "default": "enabled"
+          }
+        },
+        "required": [
+          "equipmentId",
+          "metricType",
+          "duration",
+          "severity"
+        ]
+      },
+      "ThresholdConfig": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "阈值配置ID（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID（UUID格式）",
+            "example": "SYS-BAT-001"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "监测指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "voltage"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称，用于精确匹配告警规则（如\"总电压\"、\"单体最高温度\"）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "faultName": {
+            "type": "string",
+            "description": "故障名称，描述触发告警时的具体故障类型",
+            "example": "总压过压",
+            "maxLength": 200
+          },
+          "recommendedAction": {
+            "type": "string",
+            "description": "处理措施，建议操作员在告警触发时采取的纠正措施",
+            "example": "检查电池组连接，确认充电器输出电压是否正常"
+          },
+          "upperLimit": {
+            "type": "number",
+            "description": "上限值，当监测值超过此值时触发告警",
+            "example": 750
+          },
+          "lowerLimit": {
+            "type": "number",
+            "description": "下限值，当监测值低于此值时触发告警",
+            "example": 550
+          },
+          "duration": {
+            "type": "number",
+            "description": "持续时间（毫秒），超过阈值并持续该时间后才触发告警",
+            "example": 5000
+          },
+          "severity": {
+            "type": "string",
+            "description": "严重程度",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "example": "high"
+          },
+          "ruleStatus": {
+            "type": "string",
+            "description": "规则状态",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "example": "enabled",
+            "default": "enabled"
+          },
+          "creator": {
+            "type": "string",
+            "description": "创建人ID",
+            "example": "user-uuid-123"
+          },
+          "modifier": {
+            "type": "string",
+            "description": "修改人ID",
+            "example": "user-uuid-456"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "创建时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          },
+          "updatedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "更新时间",
+            "example": "2025-01-02T15:30:00.000Z"
+          },
+          "deletedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "软删除时间",
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "equipmentId",
+          "metricType",
+          "duration",
+          "severity",
+          "ruleStatus",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "PaginatedResponseDto": {
+        "type": "object",
+        "properties": {
+          "items": {
+            "description": "数据项列表",
+            "type": "array",
+            "items": {
+              "type": "array"
+            }
+          },
+          "total": {
+            "type": "number",
+            "description": "总记录数",
+            "example": 100
+          },
+          "page": {
+            "type": "number",
+            "description": "当前页码（从 1 开始）",
+            "example": 1,
+            "minimum": 1
+          },
+          "pageSize": {
+            "type": "number",
+            "description": "每页记录数",
+            "example": 20,
+            "minimum": 1,
+            "maximum": 100
+          },
+          "totalPages": {
+            "type": "number",
+            "description": "总页数",
+            "example": 5
+          }
+        },
+        "required": [
+          "items",
+          "total",
+          "page",
+          "pageSize",
+          "totalPages"
+        ]
+      },
+      "UpdateThresholdDto": {
+        "type": "object",
+        "properties": {
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "监测指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "temperature"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称（推荐填写，用于精确匹配告警规则）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "faultName": {
+            "type": "string",
+            "description": "故障名称（推荐填写，描述具体故障类型）",
+            "example": "总压过压",
+            "maxLength": 200
+          },
+          "recommendedAction": {
+            "type": "string",
+            "description": "处理措施（可选，建议操作员采取的纠正措施）",
+            "example": "1. 检查电池单体均衡状态\n2. 检查充电系统是否正常\n3. 必要时停止充电"
+          },
+          "upperLimit": {
+            "type": "number",
+            "description": "上限值（超过此值触发告警）",
+            "example": 85.5
+          },
+          "lowerLimit": {
+            "type": "number",
+            "description": "下限值（低于此值触发告警）",
+            "example": 10
+          },
+          "duration": {
+            "type": "number",
+            "description": "持续时间（毫秒），超过阈值并持续该时间后才触发告警",
+            "example": 300000,
+            "minimum": 0
+          },
+          "severity": {
+            "type": "string",
+            "description": "严重程度",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "example": "high"
+          },
+          "ruleStatus": {
+            "type": "string",
+            "description": "规则状态",
+            "enum": [
+              "enabled",
+              "disabled"
+            ],
+            "default": "enabled"
+          }
+        }
+      },
+      "AlarmRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "告警记录ID（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "SYS-BAT-001"
+          },
+          "thresholdId": {
+            "type": "string",
+            "description": "触发的阈值配置ID",
+            "example": "threshold-uuid-123"
+          },
+          "abnormalMetricType": {
+            "type": "string",
+            "description": "异常指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "temperature"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "告警关联的监测点名称（反规范化，保证历史准确性）",
+            "example": "单体最高温度",
+            "maxLength": 100
+          },
+          "faultName": {
+            "type": "string",
+            "description": "故障名称（反规范化，保证历史准确性）",
+            "example": "单体温度过高",
+            "maxLength": 200
+          },
+          "recommendedAction": {
+            "type": "string",
+            "description": "处理措施建议（反规范化，保证历史准确性）",
+            "example": "立即检查冷却系统，确认冷却泵是否正常运行"
+          },
+          "abnormalValue": {
+            "type": "number",
+            "description": "异常值",
+            "example": 95.5
+          },
+          "thresholdRange": {
+            "type": "string",
+            "description": "阈值范围描述",
+            "example": "上限: 85.0°C",
+            "maxLength": 200
+          },
+          "triggeredAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "告警触发时间",
+            "example": "2025-01-15T14:30:00.000Z"
+          },
+          "severity": {
+            "type": "string",
+            "description": "严重程度",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "example": "high"
+          },
+          "status": {
+            "type": "string",
+            "description": "处理状态",
+            "enum": [
+              "pending",
+              "processing",
+              "resolved",
+              "ignored"
+            ],
+            "example": "pending",
+            "default": "pending"
+          },
+          "handler": {
+            "type": "string",
+            "description": "处理人ID",
+            "example": "user-uuid-789"
+          },
+          "handledAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "处理时间",
+            "example": "2025-01-15T15:00:00.000Z"
+          },
+          "handleNote": {
+            "type": "string",
+            "description": "处理说明",
+            "example": "已检查冷却系统，发现冷却泵堵塞，已清理"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "创建时间",
+            "example": "2025-01-15T14:30:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "equipmentId",
+          "abnormalMetricType",
+          "abnormalValue",
+          "thresholdRange",
+          "triggeredAt",
+          "severity",
+          "status",
+          "createdAt"
+        ]
+      },
+      "UpdateAlarmStatusDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "description": "处理状态",
+            "enum": [
+              "pending",
+              "processing",
+              "resolved",
+              "ignored"
+            ],
+            "example": "resolved"
+          },
+          "handleNote": {
+            "type": "string",
+            "description": "处理说明",
+            "example": "已现场检查并修复",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "UptimeStats": {
+        "type": "object",
+        "properties": {
+          "totalDuration": {
+            "type": "number",
+            "description": "总时长（毫秒）",
+            "example": 3600000
+          },
+          "runningDuration": {
+            "type": "number",
+            "description": "运行时长（毫秒）",
+            "example": 3000000
+          },
+          "maintenanceDuration": {
+            "type": "number",
+            "description": "维护时长（毫秒）",
+            "example": 300000
+          },
+          "stoppedDuration": {
+            "type": "number",
+            "description": "停机时长（毫秒）",
+            "example": 300000
+          },
+          "uptimeRate": {
+            "type": "number",
+            "description": "运行率（%）",
+            "example": 83.33
+          }
+        },
+        "required": [
+          "totalDuration",
+          "runningDuration",
+          "maintenanceDuration",
+          "stoppedDuration",
+          "uptimeRate"
+        ]
+      },
+      "TrendAnalysis": {
+        "type": "object",
+        "properties": {
+          "temperatureTrend": {
+            "type": "string",
+            "description": "温度趋势（如上升、下降、稳定）",
+            "example": "上升"
+          },
+          "vibrationTrend": {
+            "type": "string",
+            "description": "振动趋势（如上升、下降、稳定）",
+            "example": "稳定"
+          },
+          "overallTrend": {
+            "type": "string",
+            "description": "总体趋势（如改善、恶化、稳定）",
+            "example": "恶化"
+          },
+          "riskLevel": {
+            "type": "string",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "description": "风险等级",
+            "example": "medium"
+          },
+          "suggestions": {
+            "description": "建议事项",
+            "example": [
+              "检查冷却系统",
+              "加强巡检"
+            ],
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          }
+        },
+        "required": [
+          "temperatureTrend",
+          "vibrationTrend",
+          "overallTrend",
+          "riskLevel",
+          "suggestions"
+        ]
+      },
+      "HealthReport": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "健康报告ID（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "equipmentId": {
+            "type": "string",
+            "description": "关联的设备ID（UUID格式），对于汇总报告为null",
+            "example": "e1f2g3h4-i5j6-7890-klmn-op1234567890"
+          },
+          "reportType": {
+            "type": "string",
+            "enum": [
+              "single",
+              "aggregate"
+            ],
+            "description": "报告类型",
+            "example": "single"
+          },
+          "dataStartTime": {
+            "type": "number",
+            "description": "数据开始时间（时间戳，毫秒）",
+            "example": 1700000000000
+          },
+          "dataEndTime": {
+            "type": "number",
+            "description": "数据结束时间（时间戳，毫秒）",
+            "example": 1700086399999
+          },
+          "healthScore": {
+            "type": "number",
+            "description": "健康评分（0-100分）",
+            "example": 85.75,
+            "minimum": 0,
+            "maximum": 100
+          },
+          "healthLevel": {
+            "type": "string",
+            "enum": [
+              "excellent",
+              "good",
+              "fair",
+              "poor"
+            ],
+            "description": "健康等级（根据评分自动计算）",
+            "example": "good"
+          },
+          "uptimeStats": {
+            "description": "运行时间统计（JSON格式）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/UptimeStats"
+              }
+            ]
+          },
+          "abnormalCount": {
+            "type": "number",
+            "description": "异常次数",
+            "example": 5,
+            "default": 0
+          },
+          "trendAnalysis": {
+            "description": "趋势分析（JSON格式）",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/TrendAnalysis"
+              }
+            ]
+          },
+          "generatedAt": {
+            "type": "number",
+            "description": "报告生成时间（时间戳，毫秒）",
+            "example": 1700086400000
+          },
+          "generatedBy": {
+            "type": "string",
+            "description": "生成人ID（UUID格式）",
+            "example": "f1g2h3i4-j5k6-7890-lmno-pq1234567890"
+          },
+          "remarks": {
+            "type": "string",
+            "description": "报告备注，用于添加人工审核意见、补充说明等",
+            "example": "该报告数据经过人工审核，确认无误。",
+            "maxLength": 1000
+          },
+          "additionalNotes": {
+            "type": "string",
+            "description": "附加说明，用于记录额外的分析结果、处理建议等",
+            "example": "已安排维护计划，预计在2025-01-01进行设备检修。",
+            "maxLength": 2000
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录创建时间",
+            "example": "2025-01-01T10:00:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "reportType",
+          "dataStartTime",
+          "dataEndTime",
+          "healthScore",
+          "healthLevel",
+          "abnormalCount",
+          "generatedAt",
+          "generatedBy",
+          "createdAt"
+        ]
+      },
+      "GenerateHealthReportDto": {
+        "type": "object",
+        "properties": {
+          "deviceId": {
+            "type": "string",
+            "description": "需要进行健康评估的设备的唯一标识符",
+            "example": "SYS-BILGE-001"
+          },
+          "startTime": {
+            "type": "string",
+            "description": "评估数据范围的起始时间 (ISO 8601格式)",
+            "example": "2025-12-01T00:00:00Z"
+          },
+          "endTime": {
+            "type": "string",
+            "description": "评估数据范围的结束时间 (ISO 8601格式)",
+            "example": "2025-12-12T00:00:00Z"
+          }
+        },
+        "required": [
+          "deviceId",
+          "startTime",
+          "endTime"
+        ]
+      },
+      "UpdateHealthReportDto": {
+        "type": "object",
+        "properties": {
+          "remarks": {
+            "type": "string",
+            "description": "报告备注（可选，用于添加人工审核意见、补充说明等）",
+            "example": "该报告数据经过人工审核，确认无误。建议关注设备BATT-001的温度变化趋势。",
+            "maxLength": 1000
+          },
+          "additionalNotes": {
+            "type": "string",
+            "description": "附加说明（可选，用于记录额外的分析结果、处理建议等）",
+            "example": "已安排维护计划，预计在2024-12-01进行设备检修。",
+            "maxLength": 2000
+          }
+        }
+      },
+      "ImportDataDto": {
+        "type": "object",
+        "properties": {
+          "importRecordId": {
+            "type": "string",
+            "description": "导入记录ID",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "skipInvalidRows": {
+            "type": "boolean",
+            "description": "是否跳过验证失败的行",
+            "example": true,
+            "default": true
+          },
+          "duplicateStrategy": {
+            "type": "string",
+            "description": "重复数据处理策略",
+            "enum": [
+              "skip",
+              "overwrite"
+            ],
+            "example": "skip"
+          },
+          "remarks": {
+            "type": "string",
+            "description": "备注信息"
+          }
+        },
+        "required": [
+          "importRecordId",
+          "skipInvalidRows",
+          "duplicateStrategy"
+        ]
+      },
+      "ImportError": {
+        "type": "object",
+        "properties": {
+          "row": {
+            "type": "number",
+            "description": "行号",
+            "example": 2
+          },
+          "data": {
+            "type": "object",
+            "description": "原始数据",
+            "example": {
+              "equipmentId": "SYS-BAT-001",
+              "timestamp": "2025-01-01 10:00:00"
+            }
+          },
+          "reason": {
+            "type": "string",
+            "description": "失败原因",
+            "example": "设备ID不存在"
+          },
+          "batch": {
+            "type": "number",
+            "description": "批次号",
+            "example": 1
+          }
+        },
+        "required": [
+          "row",
+          "data",
+          "reason"
+        ]
+      },
+      "ImportRecord": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "导入记录ID（UUID格式）",
+            "example": "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+          },
+          "fileName": {
+            "type": "string",
+            "description": "导入文件名",
+            "example": "monitoring_data_20251214.xlsx",
+            "maxLength": 255
+          },
+          "fileFormat": {
+            "type": "string",
+            "enum": [
+              "excel",
+              "csv",
+              "json"
+            ],
+            "description": "文件格式",
+            "example": "excel"
+          },
+          "fileSize": {
+            "type": "number",
+            "description": "文件大小（字节）",
+            "example": 102400
+          },
+          "equipmentId": {
+            "type": "string",
+            "description": "目标设备ID（UUID格式），多设备导入时为null",
+            "example": "e1f2g3h4-i5j6-7890-klmn-op1234567890"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "processing",
+              "completed",
+              "partial",
+              "failed"
+            ],
+            "description": "导入状态",
+            "example": "completed"
+          },
+          "totalRows": {
+            "type": "number",
+            "description": "总数据条数",
+            "example": 1000,
+            "default": 0
+          },
+          "successRows": {
+            "type": "number",
+            "description": "成功导入条数",
+            "example": 980,
+            "default": 0
+          },
+          "failedRows": {
+            "type": "number",
+            "description": "失败条数",
+            "example": 15,
+            "default": 0
+          },
+          "skippedRows": {
+            "type": "number",
+            "description": "跳过条数（如重复数据）",
+            "example": 5,
+            "default": 0
+          },
+          "duplicateStrategy": {
+            "type": "string",
+            "enum": [
+              "skip",
+              "overwrite"
+            ],
+            "description": "重复数据处理策略",
+            "example": "skip",
+            "default": "skip"
+          },
+          "errors": {
+            "description": "错误详情（JSON格式）",
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ImportError"
+            }
+          },
+          "startedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "开始处理时间",
+            "example": "2025-12-14T10:00:00.000Z"
+          },
+          "completedAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "完成时间",
+            "example": "2025-12-14T10:05:30.000Z"
+          },
+          "importedBy": {
+            "type": "string",
+            "description": "导入操作人ID（UUID格式）",
+            "example": "f1g2h3i4-j5k6-7890-lmno-pq1234567890"
+          },
+          "createdAt": {
+            "format": "date-time",
+            "type": "string",
+            "description": "记录创建时间",
+            "example": "2025-12-14T09:59:00.000Z"
+          }
+        },
+        "required": [
+          "id",
+          "fileName",
+          "fileFormat",
+          "fileSize",
+          "status",
+          "totalRows",
+          "successRows",
+          "failedRows",
+          "skippedRows",
+          "duplicateStrategy",
+          "importedBy",
+          "createdAt"
+        ]
+      },
+      "MonitoringStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "max": {
+            "type": "number",
+            "description": "最大值",
+            "example": 95.5
+          },
+          "min": {
+            "type": "number",
+            "description": "最小值",
+            "example": 65.2
+          },
+          "average": {
+            "type": "number",
+            "description": "平均值",
+            "example": 78.6
+          },
+          "stdDev": {
+            "type": "number",
+            "description": "标准差",
+            "example": 8.3
+          },
+          "dataPoints": {
+            "type": "number",
+            "description": "数据点数量",
+            "example": 1440
+          }
+        },
+        "required": [
+          "max",
+          "min",
+          "average",
+          "stdDev",
+          "dataPoints"
+        ]
+      },
+      "AlarmStatsResponseDto": {
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "number",
+            "description": "告警总数",
+            "example": 45
+          },
+          "groupBySeverity": {
+            "type": "object",
+            "description": "按严重程度分组统计",
+            "example": {
+              "low": 10,
+              "medium": 20,
+              "high": 12,
+              "critical": 3
+            }
+          },
+          "groupByStatus": {
+            "type": "object",
+            "description": "按处理状态分组统计",
+            "example": {
+              "pending": 5,
+              "processing": 8,
+              "resolved": 30,
+              "ignored": 2
+            }
+          }
+        },
+        "required": [
+          "totalCount",
+          "groupBySeverity",
+          "groupByStatus"
+        ]
+      },
+      "EquipmentOverviewDto": {
+        "type": "object",
+        "properties": {
+          "totalCount": {
+            "type": "number",
+            "description": "设备总数",
+            "example": 50
+          },
+          "onlineCount": {
+            "type": "number",
+            "description": "在线设备数（状态为normal或warning）",
+            "example": 45
+          },
+          "offlineCount": {
+            "type": "number",
+            "description": "离线设备数（状态为offline）",
+            "example": 3
+          },
+          "abnormalCount": {
+            "type": "number",
+            "description": "异常设备数（有未处理告警）",
+            "example": 2
+          }
+        },
+        "required": [
+          "totalCount",
+          "onlineCount",
+          "offlineCount",
+          "abnormalCount"
+        ]
+      },
+      "MonitoringDataExportQueryDto": {
+        "type": "object",
+        "properties": {
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "metricType": {
+            "type": "string",
+            "description": "监测指标类型",
+            "enum": [
+              "vibration",
+              "temperature",
+              "pressure",
+              "humidity",
+              "speed",
+              "current",
+              "voltage",
+              "power",
+              "frequency",
+              "level",
+              "resistance",
+              "switch"
+            ],
+            "example": "temperature"
+          },
+          "monitoringPoint": {
+            "type": "string",
+            "description": "监测点名称（可选，用于筛选特定监测点的数据）",
+            "example": "总电压",
+            "maxLength": 100
+          },
+          "startTime": {
+            "type": "number",
+            "description": "开始时间（Unix时间戳，毫秒）",
+            "example": 1700000000000
+          },
+          "endTime": {
+            "type": "number",
+            "description": "结束时间（Unix时间戳，毫秒）",
+            "example": 1700086400000
+          }
+        }
+      },
+      "ExportMonitoringDataDto": {
+        "type": "object",
+        "properties": {
+          "queryConditions": {
+            "description": "查询条件",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/MonitoringDataExportQueryDto"
+              }
+            ]
+          },
+          "exportFormat": {
+            "type": "string",
+            "description": "导出格式",
+            "enum": [
+              "excel",
+              "csv",
+              "pdf"
+            ],
+            "example": "excel"
+          }
+        },
+        "required": [
+          "queryConditions",
+          "exportFormat"
+        ]
+      },
+      "ExportResponseDto": {
+        "type": "object",
+        "properties": {
+          "downloadUrl": {
+            "type": "string",
+            "description": "下载链接",
+            "example": "https://example.com/downloads/monitoring_data_20231114.xlsx"
+          },
+          "expiresAt": {
+            "type": "number",
+            "description": "链接过期时间（Unix时间戳，毫秒）",
+            "example": 1700006399999
+          }
+        },
+        "required": [
+          "downloadUrl",
+          "expiresAt"
+        ]
+      },
+      "AlarmExportQueryDto": {
+        "type": "object",
+        "properties": {
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "severity": {
+            "type": "string",
+            "description": "严重程度",
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "critical"
+            ],
+            "example": "high"
+          },
+          "status": {
+            "type": "string",
+            "description": "处理状态",
+            "enum": [
+              "pending",
+              "processing",
+              "resolved",
+              "ignored"
+            ],
+            "example": "resolved"
+          },
+          "startTime": {
+            "type": "number",
+            "description": "开始时间（Unix时间戳，毫秒）",
+            "example": 1700000000000
+          },
+          "endTime": {
+            "type": "number",
+            "description": "结束时间（Unix时间戳，毫秒）",
+            "example": 1700086400000
+          }
+        }
+      },
+      "ExportAlarmsDto": {
+        "type": "object",
+        "properties": {
+          "queryConditions": {
+            "description": "查询条件",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/AlarmExportQueryDto"
+              }
+            ]
+          },
+          "exportFormat": {
+            "type": "string",
+            "description": "导出格式",
+            "enum": [
+              "excel",
+              "csv",
+              "pdf"
+            ],
+            "example": "excel"
+          }
+        },
+        "required": [
+          "queryConditions",
+          "exportFormat"
+        ]
+      },
+      "ReportExportQueryDto": {
+        "type": "object",
+        "properties": {
+          "reportId": {
+            "type": "string",
+            "description": "报告ID",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "equipmentId": {
+            "type": "string",
+            "description": "设备ID",
+            "example": "550e8400-e29b-41d4-a716-446655440000"
+          },
+          "startTime": {
+            "type": "number",
+            "description": "生成时间-开始（Unix时间戳，毫秒）",
+            "example": 1700000000000
+          },
+          "endTime": {
+            "type": "number",
+            "description": "生成时间-结束（Unix时间戳，毫秒）",
+            "example": 1700086400000
+          }
+        }
+      },
+      "ExportReportsDto": {
+        "type": "object",
+        "properties": {
+          "queryConditions": {
+            "description": "查询条件",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ReportExportQueryDto"
+              }
+            ]
+          },
+          "exportFormat": {
+            "type": "string",
+            "description": "导出格式（健康报告仅支持PDF）",
+            "enum": [
+              "pdf"
+            ],
+            "example": "pdf"
+          }
+        },
+        "required": [
+          "queryConditions",
+          "exportFormat"
+        ]
+      }
+    }
+  }
+}

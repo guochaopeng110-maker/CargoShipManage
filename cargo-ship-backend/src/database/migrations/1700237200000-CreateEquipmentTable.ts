@@ -7,11 +7,11 @@ import { MigrationInterface, QueryRunner, Table, TableIndex } from 'typeorm';
  * @description
  * 1. 创建 equipment 表结构
  * 2. 创建相关索引
- * 3. 插入15个初始设备数据（基于 test-data-spec.md 第 2.2 节）
+ * 3. 插入8个系统级设备数据（基于 docs/data/ 业务需求文档）
  *
  * @author 系统生成
  * @date 2024-11-26
- * @version 1.1 - 添加种子数据
+ * @version 2.0 - 重构为8个系统级设备
  */
 export class CreateEquipmentTable1700237200000 implements MigrationInterface {
   public async up(queryRunner: QueryRunner): Promise<void> {
@@ -178,218 +178,151 @@ export class CreateEquipmentTable1700237200000 implements MigrationInterface {
     );
 
     // ==========================================
-    // 第三步：插入初始设备数据（15个设备）
-    // 数据来源：test-data-spec.md 第 2.2 节
+    // 第三步：插入初始设备数据（8个系统级设备）
+    // 数据来源：docs/data/ 业务需求文档
+    // 变更说明：从15个细粒度组件级设备重构为8个系统级设备
     // ==========================================
 
-    // 定义设备数据（基于 test-data-spec.md）
+    // 定义设备数据（基于 docs/data/ 业务需求）
     const equipmentData = [
       // ==========================================
-      // 电池系统（2个）
+      // 1. 电池系统（1个）
+      // 监测点数量：24个
       // ==========================================
       {
         id: this.generateUUID(),
-        deviceId: 'BATT-001',
-        deviceName: '1#电池组',
-        deviceType: '电池系统',
-        model: 'LFP-648V-150Ah',
+        deviceId: 'SYS-BAT-001',
+        deviceName: '电池系统',
+        deviceType: '电池装置',
+        model: 'LFP-648V-300Ah',
         manufacturer: '某电池制造商',
         location: '电池舱',
         commissionDate: '2024-01-15',
         status: 'normal',
-        description: '储能电池系统，额定电压648V，容量150Ah',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'BATT-002',
-        deviceName: '2#电池组',
-        deviceType: '电池系统',
-        model: 'LFP-648V-150Ah',
-        manufacturer: '某电池制造商',
-        location: '电池舱',
-        commissionDate: '2024-01-15',
-        status: 'normal',
-        description: '储能电池系统，额定电压648V，容量150Ah',
+        description:
+          '锂电池能源管理系统，包含BMS及所有电池单元，额定电压648V，总容量300Ah',
       },
 
       // ==========================================
-      // 推进系统 - 推进电机（2个）
+      // 2. 左推进系统（1个）
+      // 监测点数量：15个
       // ==========================================
       {
         id: this.generateUUID(),
-        deviceId: 'MOTOR-L-001',
-        deviceName: '左推进电机',
-        deviceType: '推进电机',
-        model: 'PM-1500-400V',
-        manufacturer: '某电机制造商',
+        deviceId: 'SYS-PROP-L-001',
+        deviceName: '左推进系统',
+        deviceType: '推进系统',
+        model: 'PROP-L-1500kW',
+        manufacturer: '某推进系统制造商',
         location: '机舱左侧',
         commissionDate: '2024-02-01',
         status: 'normal',
-        description: '永磁同步电机，额定功率1500kW，额定电压400V',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'MOTOR-R-001',
-        deviceName: '右推进电机',
-        deviceType: '推进电机',
-        model: 'PM-1500-400V',
-        manufacturer: '某电机制造商',
-        location: '机舱右侧',
-        commissionDate: '2024-02-01',
-        status: 'normal',
-        description: '永磁同步电机，额定功率1500kW，额定电压400V',
+        description:
+          '左侧推进电机及其逆变控制系统，永磁同步电机，额定功率1500kW',
       },
 
       // ==========================================
-      // 推进系统 - 推进逆变器（2个）
+      // 3. 右推进系统（1个）
+      // 监测点数量：15个
       // ==========================================
       {
         id: this.generateUUID(),
-        deviceId: 'INV-L-001',
-        deviceName: '左推进逆变器',
-        deviceType: '推进逆变器',
-        model: 'INV-600A-750V',
-        manufacturer: '某逆变器制造商',
-        location: '机舱左侧',
-        commissionDate: '2024-02-01',
-        status: 'normal',
-        description: '三相逆变器，额定电流600A，额定电压750V',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'INV-R-001',
-        deviceName: '右推进逆变器',
-        deviceType: '推进逆变器',
-        model: 'INV-600A-750V',
-        manufacturer: '某逆变器制造商',
+        deviceId: 'SYS-PROP-R-001',
+        deviceName: '右推进系统',
+        deviceType: '推进系统',
+        model: 'PROP-R-1500kW',
+        manufacturer: '某推进系统制造商',
         location: '机舱右侧',
         commissionDate: '2024-02-01',
         status: 'normal',
-        description: '三相逆变器，额定电流600A，额定电压750V',
+        description:
+          '右侧推进电机及其逆变控制系统，永磁同步电机，额定功率1500kW',
       },
 
       // ==========================================
-      // 配电系统 - 直流配电板（1个）
+      // 4. 1#日用逆变器系统（1个）
+      // 监测点数量：10个
       // ==========================================
       {
         id: this.generateUUID(),
-        deviceId: 'DC-BOARD-001',
-        deviceName: '主直流配电板',
-        deviceType: '直流配电板',
+        deviceId: 'SYS-INV-1-001',
+        deviceName: '1#日用逆变器系统',
+        deviceType: '逆变器系统',
+        model: 'AC-INV-190A',
+        manufacturer: '某逆变器制造商',
+        location: '配电室',
+        commissionDate: '2024-01-25',
+        status: 'normal',
+        description: '1号日用逆变器及配套设备，额定输出电流190A',
+      },
+
+      // ==========================================
+      // 5. 2#日用逆变器系统（1个）
+      // 监测点数量：10个
+      // ==========================================
+      {
+        id: this.generateUUID(),
+        deviceId: 'SYS-INV-2-001',
+        deviceName: '2#日用逆变器系统',
+        deviceType: '逆变器系统',
+        model: 'AC-INV-190A',
+        manufacturer: '某逆变器制造商',
+        location: '配电室',
+        commissionDate: '2024-01-25',
+        status: 'normal',
+        description: '2号日用逆变器及配套设备，额定输出电流190A',
+      },
+
+      // ==========================================
+      // 6. 直流配电板系统（1个）
+      // 监测点数量：11个
+      // ==========================================
+      {
+        id: this.generateUUID(),
+        deviceId: 'SYS-DCPD-001',
+        deviceName: '直流配电板系统',
+        deviceType: '配电系统',
         model: 'DCB-750V-1000A',
         manufacturer: '某配电设备制造商',
         location: '主配电室',
         commissionDate: '2024-01-20',
         status: 'normal',
-        description: '直流配电板，额定电压750V，额定电流1000A',
+        description: '直流母排配电及保护系统，额定电压750V，额定电流1000A',
       },
 
       // ==========================================
-      // 配电系统 - 日用逆变器（2个）
+      // 7. 舱底水系统（1个）
+      // 监测点数量：4个
       // ==========================================
       {
         id: this.generateUUID(),
-        deviceId: 'INV-AC-001',
-        deviceName: '1#日用逆变器',
-        deviceType: '日用逆变器',
-        model: 'AC-INV-190A',
-        manufacturer: '某逆变器制造商',
-        location: '配电室',
-        commissionDate: '2024-01-25',
+        deviceId: 'SYS-BILGE-001',
+        deviceName: '舱底水系统',
+        deviceType: '辅助系统',
+        model: 'BW-Monitor-4Wells',
+        manufacturer: '某传感器制造商',
+        location: '舱底各区',
+        commissionDate: '2024-01-10',
         status: 'normal',
-        description: '日用交流逆变器，额定输出电流190A',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'INV-AC-002',
-        deviceName: '2#日用逆变器',
-        deviceType: '日用逆变器',
-        model: 'AC-INV-190A',
-        manufacturer: '某逆变器制造商',
-        location: '配电室',
-        commissionDate: '2024-01-25',
-        status: 'normal',
-        description: '日用交流逆变器，额定输出电流190A',
+        description: '舱底水集水井及排水系统，包含4个集水井水位监测',
       },
 
       // ==========================================
-      // 辅助系统 - 冷却水泵（2个）
+      // 8. 冷却水泵系统（1个）
+      // 监测点数量：5个
       // ==========================================
       {
         id: this.generateUUID(),
-        deviceId: 'PUMP-COOL-001',
-        deviceName: '1#冷却水泵',
-        deviceType: '冷却水泵',
-        model: 'CP-100-0.1MPa',
+        deviceId: 'SYS-COOL-001',
+        deviceName: '冷却水泵系统',
+        deviceType: '辅助系统',
+        model: 'CP-Dual-100L',
         manufacturer: '某泵制造商',
         location: '机舱',
         commissionDate: '2024-02-05',
         status: 'normal',
-        description: '齿轮箱冷却水泵，额定流量100L/min，额定压力0.1MPa',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'PUMP-COOL-002',
-        deviceName: '2#冷却水泵',
-        deviceType: '冷却水泵',
-        model: 'CP-100-0.1MPa',
-        manufacturer: '某泵制造商',
-        location: '机舱',
-        commissionDate: '2024-02-05',
-        status: 'normal',
-        description: '齿轮箱冷却水泵，额定流量100L/min，额定压力0.1MPa',
-      },
-
-      // ==========================================
-      // 辅助系统 - 舱底水井（4个）
-      // ==========================================
-      {
-        id: this.generateUUID(),
-        deviceId: 'WELL-001',
-        deviceName: '1#集水井',
-        deviceType: '舱底水井',
-        model: 'BW-Monitor',
-        manufacturer: '某传感器制造商',
-        location: '舱底1区',
-        commissionDate: '2024-01-10',
-        status: 'normal',
-        description: '舱底集水井水位监测系统',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'WELL-002',
-        deviceName: '2#集水井',
-        deviceType: '舱底水井',
-        model: 'BW-Monitor',
-        manufacturer: '某传感器制造商',
-        location: '舱底2区',
-        commissionDate: '2024-01-10',
-        status: 'normal',
-        description: '舱底集水井水位监测系统',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'WELL-003',
-        deviceName: '3#集水井',
-        deviceType: '舱底水井',
-        model: 'BW-Monitor',
-        manufacturer: '某传感器制造商',
-        location: '舱底3区',
-        commissionDate: '2024-01-10',
-        status: 'normal',
-        description: '舱底集水井水位监测系统',
-      },
-      {
-        id: this.generateUUID(),
-        deviceId: 'WELL-004',
-        deviceName: '4#集水井',
-        deviceType: '舱底水井',
-        model: 'BW-Monitor',
-        manufacturer: '某传感器制造商',
-        location: '舱底4区',
-        commissionDate: '2024-01-10',
-        status: 'normal',
-        description: '舱底集水井水位监测系统',
+        description:
+          '冷却水循环泵及管路系统，包含2台泵，额定流量100L/min，额定压力0.1MPa',
       },
     ];
 
@@ -424,6 +357,8 @@ export class CreateEquipmentTable1700237200000 implements MigrationInterface {
         ],
       );
     }
+
+    console.log('✅ 设备表创建完成，已插入8个系统级设备');
   }
 
   public async down(queryRunner: QueryRunner): Promise<void> {

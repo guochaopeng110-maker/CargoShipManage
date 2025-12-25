@@ -14,6 +14,11 @@ import { createRoot } from "react-dom/client"; // React 18的createRoot API，�
 import App from "./App.tsx"; // 主应用组件，包含整个应用的路由和状态管理
 import "./index.css"; // 全局样式文件，包含Tailwind CSS和其他全局样式
 import { Logger } from "./utils/logger"; // 简洁实用的调试 Logger
+import { OpenAPI } from './services/api'; // 导入 OpenAPI 配置
+
+// 初始化 API 基础路径
+OpenAPI.BASE = import.meta.env.VITE_API_BASE_URL || '';
+Logger.info(`API Base URL: ${OpenAPI.BASE}`);
 
 Logger.setComponent('Main');
 
@@ -25,7 +30,13 @@ Logger.info('应用启动开始');
 const container = document.getElementById("root")!;
 const root = createRoot(container);
 
+// 仅在开发环境加载实时服务调试工具
+if (import.meta.env.DEV) {
+    import('./utils/verify-realtime').then(({ setupRealtimeDebug }) => {
+        setupRealtimeDebug();
+    });
+}
+
 root.render(<App />);
 
 Logger.info('React应用渲染完成');
-  

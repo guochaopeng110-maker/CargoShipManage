@@ -75,7 +75,7 @@ describe('ExportService', () => {
 
       // 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
@@ -105,14 +105,14 @@ describe('ExportService', () => {
 
       // Assert: 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
 
       // 验证标题行
-      const titleCell = worksheet.getCell('A1');
-      expect(titleCell.value).toBe('设备健康评估报告');
+      const titleCell = worksheet?.getCell('A1');
+      expect(titleCell?.value).toBe('设备健康评估报告');
     });
 
     it('应该在Excel中包含健康评估结果', async () => {
@@ -127,19 +127,19 @@ describe('ExportService', () => {
 
       // Assert: 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
 
       // 检查是否包含健康评分
       let hasHealthScore = false;
-      worksheet.eachRow((row) => {
+      worksheet?.eachRow((row) => {
         row.eachCell((cell) => {
           if (
             cell.value &&
             typeof cell.value !== 'object' &&
-            cell.value.toString().includes('90.5')
+            String(cell.value).includes('90.5')
           ) {
             hasHealthScore = true;
           }
@@ -157,14 +157,14 @@ describe('ExportService', () => {
 
       // Assert: 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
 
       // 检查是否包含运行时间统计标题
       let hasUptimeStats = false;
-      worksheet.eachRow((row) => {
+      worksheet?.eachRow((row) => {
         row.eachCell((cell) => {
           if (cell.value === '运行时间统计') {
             hasUptimeStats = true;
@@ -183,14 +183,14 @@ describe('ExportService', () => {
 
       // Assert: 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
 
       // 检查是否包含趋势分析标题
       let hasTrendAnalysis = false;
-      worksheet.eachRow((row) => {
+      worksheet?.eachRow((row) => {
         row.eachCell((cell) => {
           if (cell.value === '趋势分析') {
             hasTrendAnalysis = true;
@@ -217,14 +217,14 @@ describe('ExportService', () => {
 
       // Assert: 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
 
       // 检查是否包含维护建议
       let hasSuggestions = false;
-      worksheet.eachRow((row) => {
+      worksheet?.eachRow((row) => {
         row.eachCell((cell) => {
           if (cell.value === '维护建议') {
             hasSuggestions = true;
@@ -322,7 +322,7 @@ describe('ExportService', () => {
 
       // Assert: 验证结果
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
@@ -345,7 +345,7 @@ describe('ExportService', () => {
 
       // Assert: 验证结果
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
@@ -411,18 +411,19 @@ describe('ExportService', () => {
 
       // Assert: 验证Excel内容
       const workbook = new ExcelJS.Workbook();
-      await workbook.xlsx.load(buffer);
+      await workbook.xlsx.load(buffer as any);
 
       const worksheet = workbook.getWorksheet('健康评估报告');
       expect(worksheet).toBeDefined();
 
       // 检查是否包含"汇总报告"文本
       let hasAggregateText = false;
-      worksheet.eachRow((row) => {
+      worksheet?.eachRow((row) => {
         row.eachCell((cell) => {
           if (
             cell.value &&
-            cell.value.toString().includes('汇总报告（所有设备）')
+            typeof cell.value !== 'object' &&
+            String(cell.value).includes('汇总报告（所有设备）')
           ) {
             hasAggregateText = true;
           }

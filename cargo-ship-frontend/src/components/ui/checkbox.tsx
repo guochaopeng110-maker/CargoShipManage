@@ -51,44 +51,28 @@ type CheckboxProps = React.ComponentProps<typeof CheckboxPrimitive.Root>;
  * @param props.disabled - 是否禁用
  * @param props.ref - 元素的引用
  */
-function Checkbox({
-  className,
-  ...props
-}: CheckboxProps) {
-  return (
-    <CheckboxPrimitive.Root
-      data-slot="checkbox" // 用于样式选择器的数据属性
-      className={cn(
-        // 基础样式：边框、背景、尺寸、圆角、阴影、过渡动画
-        "peer border bg-input-background dark:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary data-[state=checked]:border-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
-        
-        /* 
-         * 样式说明：
-         * - peer: 与对应标签建立对等关系
-         * - data-[state=checked]: 选中状态的样式
-         * - focus-visible: 键盘焦点时的样式
-         * - aria-invalid: 错误状态的样式
-         * - disabled: 禁用状态的样式
-         */
-        
-        className, // 自定义样式类，允许覆盖默认样式
-      )}
-      {...props} // 展开其他属性（如checked、onCheckedChange、disabled等）
+const Checkbox = React.forwardRef<
+  React.ElementRef<typeof CheckboxPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof CheckboxPrimitive.Root>
+>(({ className, ...props }, ref) => (
+  <CheckboxPrimitive.Root
+    ref={ref}
+    data-slot="checkbox"
+    className={cn(
+      "peer border bg-input-background dark:bg-input/30 data-[state=checked]:bg-primary data-[state=checked]:text-primary-foreground dark:data-[state=checked]:bg-primary data-[state=checked]:border-primary focus-visible:border-ring focus-visible:ring-ring/50 aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive size-4 shrink-0 rounded-[4px] border shadow-xs transition-shadow outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50",
+      className,
+    )}
+    {...props}
+  >
+    <CheckboxPrimitive.Indicator
+      data-slot="checkbox-indicator"
+      className={cn("flex items-center justify-center text-current transition-none")}
     >
-      {/* 复选框指示器 - 显示选中状态的图标 */}
-      <CheckboxPrimitive.Indicator
-        data-slot="checkbox-indicator" // 用于样式选择器的数据属性
-        className={cn(
-          // 指示器样式：居中对齐、文字颜色、禁用过渡动画
-          "flex items-center justify-center text-current transition-none",
-        )}
-      >
-        {/* 检查图标 - 仅在选中状态时显示 */}
-        <CheckIcon className="size-3.5" />
-      </CheckboxPrimitive.Indicator>
-    </CheckboxPrimitive.Root>
-  );
-}
+      <CheckIcon className="size-3.5" />
+    </CheckboxPrimitive.Indicator>
+  </CheckboxPrimitive.Root>
+));
+Checkbox.displayName = CheckboxPrimitive.Root.displayName;
 
 // 导出复选框组件
 export { Checkbox };

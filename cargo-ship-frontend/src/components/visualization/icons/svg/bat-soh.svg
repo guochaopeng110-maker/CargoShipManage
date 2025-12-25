@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 电池外框 -->
+  <rect x="5" y="8" width="12" height="8" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <rect x="17" y="11" width="2" height="2" rx="0.5" fill="currentColor"/>
+  <!-- 盾牌符号 -->
+  <path d="M9 7 L9 11 Q9 13 11 13.5 Q13 13 13 11 L13 7 Q11 7.5 9 7" stroke="currentColor" stroke-width="1.2" fill="none"/>
+  <!-- 健康心电图 -->
+  <path d="M19 15 L20 15 L20.5 13 L21 17 L21.5 15 L22 15" stroke="currentColor" stroke-width="1" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- SOH文字 -->
+  <text x="11" y="13" font-family="Arial" font-size="4" font-weight="bold" fill="currentColor" text-anchor="middle">SOH</text>
+</svg>

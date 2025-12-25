@@ -61,7 +61,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Alert, AlertDescription } from './ui/alert'; // 警告提示组件
 
 // 设备相关类型和接口导入
-import { Equipment } from '../types/equipment'; // 设备实体类型
+// 从设备存储导入前端业务类型
+import type { Equipment } from '../stores/equipment-store'; // 设备实体类型
 
 // 维护任务相关类型定义
 interface MaintenanceTask {
@@ -103,7 +104,7 @@ interface UpdateMaintenanceTaskRequest {
 }
 
 // 设备管理Store状态管理
-import { useEquipment } from '../stores/equipment-store';
+import { useEquipmentStore } from '../stores/equipment-store';
 
 /**
  * 维护计划页面主组件
@@ -125,8 +126,8 @@ export function MaintenancePlanPage() {
     items: equipmentList,           // 设备列表数据
     loading: equipmentLoading,       // 设备加载状态
     error: equipmentError,           // 设备错误信息
-    fetchEquipmentList,             // 获取设备列表
-  } = useEquipment();
+    ensureItemsLoaded,             // 确保设备列表已加载
+  } = useEquipmentStore();
 
   // 组件本地状态管理
   const [tasks, setTasks] = useState<MaintenanceTask[]>([]); // 维护任务列表
@@ -146,9 +147,9 @@ export function MaintenancePlanPage() {
    * 在组件挂载时获取设备列表和当前维护计划
    */
   useEffect(() => {
-    // 获取设备列表
-    fetchEquipmentList().catch(console.error);
-    
+    // 确保设备列表已加载 (优先使用缓存)
+    ensureItemsLoaded().catch(console.error);
+
     // 加载维护任务列表（这里模拟API调用）
     loadMaintenanceTasks().catch(console.error);
   }, []);
@@ -160,7 +161,7 @@ export function MaintenancePlanPage() {
   const loadMaintenanceTasks = useCallback(async () => {
     setLoading(true);
     setError(null);
-    
+
     try {
       // 模拟API调用 - 在实际项目中这里会调用维护服务API
       const mockTasks: MaintenanceTask[] = [
@@ -235,7 +236,7 @@ export function MaintenancePlanPage() {
           updatedAt: Date.now() - 432000000,
         },
       ];
-      
+
       setTasks(mockTasks);
     } catch (error) {
       console.error('加载维护任务失败:', error);
@@ -326,7 +327,7 @@ export function MaintenancePlanPage() {
    */
   const confirmDeleteTask = async () => {
     if (!taskToDelete) return;
-    
+
     try {
       // 模拟API调用删除任务
       setTasks(tasks.filter(t => t.id !== taskToDelete.id));
@@ -347,7 +348,7 @@ export function MaintenancePlanPage() {
   const handleUpdateTaskStatus = async (task: MaintenanceTask) => {
     try {
       let newStatus: MaintenanceTask['status'];
-      
+
       switch (task.status) {
         case 'scheduled':
           newStatus = 'inProgress';
@@ -382,7 +383,7 @@ export function MaintenancePlanPage() {
    */
   const handleSaveTask = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    
+
     const formData = new FormData(event.currentTarget);
     const taskData = {
       name: formData.get('name') as string,
@@ -415,7 +416,7 @@ export function MaintenancePlanPage() {
         };
         setTasks([newTask, ...tasks]);
       }
-      
+
       // 操作成功后关闭对话框
       setDialogOpen(false);
       setEditingTask(null);
@@ -435,16 +436,16 @@ export function MaintenancePlanPage() {
       task.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       task.deviceName.toLowerCase().includes(searchTerm.toLowerCase()) ||
       (task.description && task.description.toLowerCase().includes(searchTerm.toLowerCase()));
-    
+
     // 状态筛选条件匹配
     const matchesStatus = filterStatus === 'all' || task.status === filterStatus;
-    
+
     // 设备筛选条件匹配
     const matchesDevice = filterDevice === 'all' || task.deviceId === filterDevice;
-    
+
     // 优先级筛选条件匹配
     const matchesPriority = filterPriority === 'all' || task.priority === filterPriority;
-    
+
     return matchesSearch && matchesStatus && matchesDevice && matchesPriority;
   });
 
@@ -457,7 +458,7 @@ export function MaintenancePlanPage() {
     const inProgress = tasks.filter(t => t.status === 'inProgress').length;
     const completed = tasks.filter(t => t.status === 'completed').length;
     const cancelled = tasks.filter(t => t.status === 'cancelled').length;
-    
+
     return { total, scheduled, inProgress, completed, cancelled };
   };
 
@@ -481,7 +482,7 @@ export function MaintenancePlanPage() {
                 <AlertDescription>{error}</AlertDescription>
               </Alert>
             )}
-            
+
             {/* 刷新按钮 */}
             <Button
               onClick={loadMaintenanceTasks}
@@ -493,7 +494,7 @@ export function MaintenancePlanPage() {
               <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
               刷新
             </Button>
-            
+
             {/* 添加新任务按钮 */}
             <Button onClick={handleAddTask} className="bg-cyan-500 hover:bg-cyan-600 text-white">
               <Plus className="w-4 h-4 mr-2" />
@@ -550,7 +551,7 @@ export function MaintenancePlanPage() {
                 className="pl-10 bg-slate-900/50 border-slate-600 text-slate-100 placeholder:text-slate-500"
               />
             </div>
-            
+
             {/* 设备筛选 */}
             <Select value={filterDevice} onValueChange={setFilterDevice}>
               <SelectTrigger className="w-48 bg-slate-900/50 border-slate-600 text-slate-100">
@@ -614,7 +615,7 @@ export function MaintenancePlanPage() {
               </Button>
             </div>
           </div>
-          
+
           {/* 筛选结果显示 */}
           <div className="mt-4 flex items-center justify-between text-sm text-slate-400">
             <span>
@@ -703,22 +704,21 @@ export function MaintenancePlanPage() {
                           <Button
                             size="sm"
                             onClick={() => handleUpdateTaskStatus(task)}
-                            className={`p-2 ${
-                              task.status === 'scheduled' ? 'bg-blue-500 hover:bg-blue-600' :
-                              task.status === 'inProgress' ? 'bg-green-500 hover:bg-green-600' :
-                              'bg-cyan-500 hover:bg-cyan-600'
-                            } text-white`}
+                            className={`p-2 ${task.status === 'scheduled' ? 'bg-blue-500 hover:bg-blue-600' :
+                                task.status === 'inProgress' ? 'bg-green-500 hover:bg-green-600' :
+                                  'bg-cyan-500 hover:bg-cyan-600'
+                              } text-white`}
                             title={
                               task.status === 'scheduled' ? '开始执行' :
-                              task.status === 'inProgress' ? '标记完成' :
-                              task.status === 'completed' ? '重新安排' : '未知操作'
+                                task.status === 'inProgress' ? '标记完成' :
+                                  task.status === 'completed' ? '重新安排' : '未知操作'
                             }
                           >
                             {task.status === 'scheduled' ? <Play className="w-3 h-3" /> :
-                             task.status === 'inProgress' ? <CheckCircle className="w-3 h-3" /> :
-                             <Clock className="w-3 h-3" />}
+                              task.status === 'inProgress' ? <CheckCircle className="w-3 h-3" /> :
+                                <Clock className="w-3 h-3" />}
                           </Button>
-                          
+
                           {/* 编辑按钮 */}
                           <Button
                             size="sm"
@@ -728,7 +728,7 @@ export function MaintenancePlanPage() {
                           >
                             <Edit className="w-3 h-3" />
                           </Button>
-                          
+
                           {/* 删除按钮 */}
                           <Button
                             size="sm"
@@ -756,7 +756,7 @@ export function MaintenancePlanPage() {
                 {editingTask ? '编辑维护任务' : '添加新维护任务'}
               </DialogTitle>
             </DialogHeader>
-            
+
             <form onSubmit={handleSaveTask} className="space-y-4">
               <div>
                 <label className="text-slate-300 text-sm mb-2 block">任务名称 *</label>
@@ -768,7 +768,7 @@ export function MaintenancePlanPage() {
                   defaultValue={editingTask?.name}
                 />
               </div>
-              
+
               <div>
                 <label className="text-slate-300 text-sm mb-2 block">设备 *</label>
                 <Select name="deviceId" required defaultValue={editingTask?.deviceId}>
@@ -784,7 +784,7 @@ export function MaintenancePlanPage() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <label className="text-slate-300 text-sm mb-2 block">计划日期 *</label>
                 <Input
@@ -810,7 +810,7 @@ export function MaintenancePlanPage() {
                   </SelectContent>
                 </Select>
               </div>
-              
+
               <div>
                 <label className="text-slate-300 text-sm mb-2 block">负责人 *</label>
                 <Input
@@ -834,7 +834,7 @@ export function MaintenancePlanPage() {
                   defaultValue={editingTask?.estimatedDuration}
                 />
               </div>
-              
+
               <div>
                 <label className="text-slate-300 text-sm mb-2 block">任务描述</label>
                 <Input
@@ -844,7 +844,7 @@ export function MaintenancePlanPage() {
                   defaultValue={editingTask?.description}
                 />
               </div>
-              
+
               <DialogFooter>
                 <Button
                   type="button"
@@ -874,7 +874,7 @@ export function MaintenancePlanPage() {
                 确认删除维护任务
               </DialogTitle>
             </DialogHeader>
-            
+
             <div className="py-4">
               <p className="text-slate-300">
                 您确定要删除维护任务 <strong>{taskToDelete?.name}</strong> 吗？
@@ -883,7 +883,7 @@ export function MaintenancePlanPage() {
                 此操作不可恢复，任务的所有相关信息将被删除。
               </p>
             </div>
-            
+
             <DialogFooter>
               <Button
                 variant="outline"

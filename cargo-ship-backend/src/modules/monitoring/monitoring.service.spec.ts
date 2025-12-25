@@ -10,6 +10,9 @@ import {
 } from '../../database/entities/time-series-data.entity';
 import { Equipment } from '../../database/entities/equipment.entity';
 import { DataQualityService } from './data-quality.service';
+import { AlarmService } from '../alarm/alarm.service';
+import { AlarmPushService } from '../alarm/alarm-push.service';
+import { MonitoringPushService } from './monitoring-push.service';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 
 /**
@@ -27,6 +30,7 @@ const createMockTimeSeriesData = (
     unit: '°C',
     quality: DataQuality.NORMAL,
     source: DataSourceEnum.SENSOR_UPLOAD,
+    monitoringPoint: undefined,
     createdAt: new Date(),
     equipment: null as any,
     isAbnormal: jest.fn().mockReturnValue(false),
@@ -90,6 +94,21 @@ describe('MonitoringService', () => {
       createQueryRunner: jest.fn().mockReturnValue(mockQueryRunner),
     };
 
+    // 创建模拟的告警服务
+    const mockAlarmService = {
+      evaluateThresholds: jest.fn().mockResolvedValue([]), // 返回空数组而不是undefined
+    };
+
+    // 创建模拟的告警推送服务
+    const mockAlarmPushService = {
+      pushAlarmNotification: jest.fn(),
+    };
+
+    // 创建模拟的监测数据推送服务
+    const mockMonitoringPushService = {
+      pushNewData: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MonitoringService,
@@ -108,6 +127,18 @@ describe('MonitoringService', () => {
         {
           provide: DataSource,
           useValue: mockDataSource,
+        },
+        {
+          provide: AlarmService,
+          useValue: mockAlarmService,
+        },
+        {
+          provide: AlarmPushService,
+          useValue: mockAlarmPushService,
+        },
+        {
+          provide: MonitoringPushService,
+          useValue: mockMonitoringPushService,
         },
       ],
     }).compile();
@@ -514,8 +545,20 @@ describe('MonitoringService', () => {
       ];
 
       equipmentRepository.findOne.mockResolvedValue(mockEquipment);
-      timeSeriesDataRepository.count.mockResolvedValue(2);
-      timeSeriesDataRepository.find.mockResolvedValue(mockData);
+
+      // Mock query builder
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(2),
+        getMany: jest.fn().mockResolvedValue(mockData),
+      };
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
 
       // Act: 执行操作
       const result = await service.queryMonitoringData(queryDto);
@@ -558,7 +601,7 @@ describe('MonitoringService', () => {
       ).rejects.toThrow(BadRequestException);
       await expect(
         service.queryMonitoringData(invalidQueryDto),
-      ).rejects.toThrow('开始时间必须小于结束时间');
+      ).rejects.toThrow('开始时间不能大于结束时间');
     });
 
     it('应该支持按指标类型过滤', async () => {
@@ -567,18 +610,29 @@ describe('MonitoringService', () => {
       const mockData = [createMockTimeSeriesData()];
 
       equipmentRepository.findOne.mockResolvedValue(mockEquipment);
-      timeSeriesDataRepository.count.mockResolvedValue(1);
-      timeSeriesDataRepository.find.mockResolvedValue(mockData);
+
+      // Mock query builder
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue(mockData),
+      };
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
 
       // Act: 执行操作
       await service.queryMonitoringData(queryDto);
 
       // Assert: 验证查询条件包含指标类型
-      expect(timeSeriesDataRepository.find).toHaveBeenCalledWith(
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'data.metricType = :metricType',
         expect.objectContaining({
-          where: expect.objectContaining({
-            metricType: MetricType.TEMPERATURE,
-          }),
+          metricType: MetricType.TEMPERATURE,
         }),
       );
     });
@@ -594,20 +648,30 @@ describe('MonitoringService', () => {
       const mockData = [createMockTimeSeriesData()];
 
       equipmentRepository.findOne.mockResolvedValue(mockEquipment);
-      timeSeriesDataRepository.count.mockResolvedValue(1);
-      timeSeriesDataRepository.find.mockResolvedValue(mockData);
+
+      // Mock query builder
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue(mockData),
+      };
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
 
       // Act: 执行操作
       await service.queryMonitoringData(queryDtoWithoutMetric);
 
-      // Assert: 验证查询条件不包含指标类型
-      expect(timeSeriesDataRepository.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          where: expect.not.objectContaining({
-            metricType: expect.anything(),
-          }),
-        }),
+      // Assert: 验证查询条件不包含指标类型（andWhere不应该被调用3次，只应该调用2次用于时间范围）
+      const andWhereCalls = mockQueryBuilder.andWhere.mock.calls;
+      const hasMetricTypeFilter = andWhereCalls.some(
+        (call) => call[0] && call[0].includes('metricType'),
       );
+      expect(hasMetricTypeFilter).toBe(false);
     });
 
     it('应该按时间倒序排列数据', async () => {
@@ -616,17 +680,28 @@ describe('MonitoringService', () => {
       const mockData = [createMockTimeSeriesData()];
 
       equipmentRepository.findOne.mockResolvedValue(mockEquipment);
-      timeSeriesDataRepository.count.mockResolvedValue(1);
-      timeSeriesDataRepository.find.mockResolvedValue(mockData);
+
+      // Mock query builder
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(1),
+        getMany: jest.fn().mockResolvedValue(mockData),
+      };
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
 
       // Act: 执行操作
       await service.queryMonitoringData(queryDto);
 
       // Assert: 验证排序
-      expect(timeSeriesDataRepository.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          order: { timestamp: 'DESC' },
-        }),
+      expect(mockQueryBuilder.orderBy).toHaveBeenCalledWith(
+        'data.timestamp',
+        'DESC',
       );
     });
 
@@ -642,19 +717,27 @@ describe('MonitoringService', () => {
       const mockData = [createMockTimeSeriesData()];
 
       equipmentRepository.findOne.mockResolvedValue(mockEquipment);
-      timeSeriesDataRepository.count.mockResolvedValue(150);
-      timeSeriesDataRepository.find.mockResolvedValue(mockData);
+
+      // Mock query builder
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(150),
+        getMany: jest.fn().mockResolvedValue(mockData),
+      };
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
 
       // Act: 执行操作
       const result = await service.queryMonitoringData(queryDtoPage2);
 
       // Assert: 验证分页计算
-      expect(timeSeriesDataRepository.find).toHaveBeenCalledWith(
-        expect.objectContaining({
-          skip: 50, // (2-1) * 50
-          take: 50,
-        }),
-      );
+      expect(mockQueryBuilder.skip).toHaveBeenCalledWith(50); // (2-1) * 50
+      expect(mockQueryBuilder.take).toHaveBeenCalledWith(50);
       expect(result.totalPages).toBe(3); // Math.ceil(150/50)
     });
   });
@@ -875,6 +958,293 @@ describe('MonitoringService', () => {
       expect(result.minValue).toBe(50.75);
       expect(result.avgValue).toBe(75.123);
       expect(result.unit).toBe('MPa');
+    });
+  });
+
+  // ==================== 监测点功能测试 ====================
+  describe('监测点 (Monitoring Point) 功能', () => {
+    it('应该成功接收带有监测点的监测数据', async () => {
+      // Arrange: 准备带监测点的测试数据
+      const createDto = {
+        equipmentId: 'equipment-id',
+        timestamp: new Date(),
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        value: 648.5,
+        unit: 'V',
+        quality: DataQuality.NORMAL,
+        source: DataSourceEnum.SENSOR_UPLOAD,
+      };
+
+      const mockEquipment = createMockEquipment();
+      const mockTimeSeriesData = createMockTimeSeriesData({
+        monitoringPoint: '总电压',
+      });
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      dataQualityService.checkDataQuality.mockReturnValue({
+        isValid: true,
+        quality: DataQuality.NORMAL,
+        warnings: [],
+        errors: [],
+      });
+      timeSeriesDataRepository.create.mockReturnValue(mockTimeSeriesData);
+      timeSeriesDataRepository.save.mockResolvedValue(mockTimeSeriesData);
+
+      // Act: 执行操作
+      const result = await service.receiveMonitoringData(createDto);
+
+      // Assert: 验证监测点被正确保存
+      expect(result.monitoringPoint).toBe('总电压');
+      expect(timeSeriesDataRepository.save).toHaveBeenCalled();
+    });
+
+    it('应该支持同一设备的不同监测点', async () => {
+      // Arrange: 准备多个监测点的测试数据
+      const totalVoltageDto = {
+        equipmentId: 'battery-equipment-id',
+        timestamp: new Date(),
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        value: 648.5,
+        unit: 'V',
+      };
+
+      const singleVoltageDto = {
+        equipmentId: 'battery-equipment-id',
+        timestamp: new Date(),
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '单体电压',
+        value: 3.27,
+        unit: 'V',
+      };
+
+      const mockEquipment = createMockEquipment({ id: 'battery-equipment-id' });
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      dataQualityService.checkDataQuality.mockReturnValue({
+        isValid: true,
+        quality: DataQuality.NORMAL,
+        warnings: [],
+        errors: [],
+      });
+
+      const mockTotalVoltageData = createMockTimeSeriesData({
+        monitoringPoint: '总电压',
+        value: 648.5,
+      });
+      const mockSingleVoltageData = createMockTimeSeriesData({
+        monitoringPoint: '单体电压',
+        value: 3.27,
+      });
+
+      timeSeriesDataRepository.create
+        .mockReturnValueOnce(mockTotalVoltageData)
+        .mockReturnValueOnce(mockSingleVoltageData);
+      timeSeriesDataRepository.save
+        .mockResolvedValueOnce(mockTotalVoltageData)
+        .mockResolvedValueOnce(mockSingleVoltageData);
+
+      // Act: 执行操作
+      const result1 = await service.receiveMonitoringData(totalVoltageDto);
+      const result2 = await service.receiveMonitoringData(singleVoltageDto);
+
+      // Assert: 验证两个不同监测点都被保存
+      expect(result1.monitoringPoint).toBe('总电压');
+      expect(result1.value).toBe(648.5);
+      expect(result2.monitoringPoint).toBe('单体电压');
+      expect(result2.value).toBe(3.27);
+    });
+
+    it('应该支持查询特定监测点的数据', async () => {
+      // Arrange: 准备查询特定监测点的测试数据
+      const queryDto = {
+        equipmentId: 'equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        startTime: Date.now() - 3600000,
+        endTime: Date.now(),
+        page: 1,
+        pageSize: 100,
+      };
+
+      const mockEquipment = createMockEquipment();
+      const mockData = [
+        createMockTimeSeriesData({
+          id: 1,
+          monitoringPoint: '总电压',
+          value: 648.5,
+        }),
+        createMockTimeSeriesData({
+          id: 2,
+          monitoringPoint: '总电压',
+          value: 650.2,
+        }),
+      ];
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+
+      // Mock query builder
+      const mockQueryBuilder = {
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(2),
+        getMany: jest.fn().mockResolvedValue(mockData),
+      };
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
+
+      // Act: 执行操作
+      const result = await service.queryMonitoringData(queryDto);
+
+      // Assert: 验证查询条件包含监测点
+      expect(result.items).toHaveLength(2);
+      expect(
+        result.items.every((item) => item.monitoringPoint === '总电压'),
+      ).toBe(true);
+      expect(mockQueryBuilder.andWhere).toHaveBeenCalledWith(
+        'data.monitoringPoint = :monitoringPoint',
+        expect.objectContaining({
+          monitoringPoint: '总电压',
+        }),
+      );
+    });
+
+    it('应该允许监测点为空（向后兼容）', async () => {
+      // Arrange: 准备不含监测点的测试数据
+      const createDto = {
+        equipmentId: 'equipment-id',
+        timestamp: new Date(),
+        metricType: MetricType.TEMPERATURE,
+        value: 75.5,
+        unit: '°C',
+      };
+
+      const mockEquipment = createMockEquipment();
+      const mockTimeSeriesData = createMockTimeSeriesData({
+        monitoringPoint: undefined,
+      });
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      dataQualityService.checkDataQuality.mockReturnValue({
+        isValid: true,
+        quality: DataQuality.NORMAL,
+        warnings: [],
+        errors: [],
+      });
+      timeSeriesDataRepository.create.mockReturnValue(mockTimeSeriesData);
+      timeSeriesDataRepository.save.mockResolvedValue(mockTimeSeriesData);
+
+      // Act: 执行操作
+      const result = await service.receiveMonitoringData(createDto);
+
+      // Assert: 验证可以保存不含监测点的数据
+      expect(result).toBeDefined();
+      expect(result.monitoringPoint).toBeUndefined();
+    });
+
+    it('应该支持批量接收带有不同监测点的数据', async () => {
+      // Arrange: 准备批量数据（包含不同监测点）
+      const batchDto = {
+        equipmentId: 'battery-equipment-id',
+        data: [
+          {
+            timestamp: new Date(),
+            metricType: MetricType.VOLTAGE,
+            monitoringPoint: '总电压',
+            value: 648.5,
+            unit: 'V',
+          },
+          {
+            timestamp: new Date(),
+            metricType: MetricType.VOLTAGE,
+            monitoringPoint: '单体电压',
+            value: 3.27,
+            unit: 'V',
+          },
+          {
+            timestamp: new Date(),
+            metricType: MetricType.TEMPERATURE,
+            monitoringPoint: '电池温度',
+            value: 35.5,
+            unit: '°C',
+          },
+        ],
+      };
+
+      const mockEquipment = createMockEquipment({ id: 'battery-equipment-id' });
+      const mockQueryRunner = (dataSource as any).createQueryRunner();
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      dataQualityService.checkDataQuality.mockReturnValue({
+        isValid: true,
+        quality: DataQuality.NORMAL,
+        warnings: [],
+        errors: [],
+      });
+      timeSeriesDataRepository.create.mockReturnValue(
+        createMockTimeSeriesData(),
+      );
+      mockQueryRunner.manager.save.mockResolvedValue(
+        createMockTimeSeriesData(),
+      );
+
+      // Act: 执行操作
+      const result = await service.receiveBatchMonitoringData(batchDto);
+
+      // Assert: 验证所有监测点数据都被接收
+      expect(result.totalCount).toBe(3);
+      expect(result.successCount).toBe(3);
+      expect(result.failedCount).toBe(0);
+    });
+
+    it('应该在统计数据时考虑监测点', async () => {
+      // Arrange: 准备特定监测点的统计查询
+      const equipmentId = 'equipment-id';
+      const metricType = MetricType.VOLTAGE;
+      const startTime = Date.now() - 3600000;
+      const endTime = Date.now();
+
+      const mockEquipment = createMockEquipment();
+      const mockStatResult = {
+        count: '50',
+        maxValue: '650.5',
+        minValue: '640.0',
+        avgValue: '645.2',
+        unit: 'V',
+      };
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+
+      const mockQueryBuilder = {
+        select: jest.fn().mockReturnThis(),
+        addSelect: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        groupBy: jest.fn().mockReturnThis(),
+        getRawOne: jest.fn().mockResolvedValue(mockStatResult),
+      };
+
+      timeSeriesDataRepository.createQueryBuilder.mockReturnValue(
+        mockQueryBuilder as any,
+      );
+
+      // Act: 执行操作
+      const result = await service.getDataStatistics(
+        equipmentId,
+        metricType,
+        startTime,
+        endTime,
+      );
+
+      // Assert: 验证统计结果
+      expect(result.count).toBe(50);
+      expect(result.maxValue).toBe(650.5);
+      expect(result.minValue).toBe(640.0);
+      expect(result.avgValue).toBe(645.2);
     });
   });
 });

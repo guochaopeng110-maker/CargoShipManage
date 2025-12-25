@@ -11,11 +11,21 @@ import {
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
   ApiQuery,
+  ApiOkResponse,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
+  ApiExtraModels,
 } from '@nestjs/swagger';
 import { MonitoringService } from './monitoring.service';
+import {
+  ErrorResponseDto,
+  DataStatisticsResponseDto,
+  BatchOperationResultDto,
+} from '../../common/dto';
 import {
   CreateTimeSeriesDataDto,
   CreateBatchTimeSeriesDataDto,
@@ -26,7 +36,10 @@ import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
-import { MetricType } from '../../database/entities/time-series-data.entity';
+import {
+  MetricType,
+  TimeSeriesData,
+} from '../../database/entities/time-series-data.entity';
 
 /**
  * 监测数据控制器
@@ -39,6 +52,7 @@ import { MetricType } from '../../database/entities/time-series-data.entity';
  * - sensor_data:read - 查询监测数据
  */
 @ApiTags('监测数据')
+@ApiExtraModels(TimeSeriesData) // ✅ 显式注册 TimeSeriesData 到 Swagger schemas
 @ApiBearerAuth()
 @Controller('api/monitoring')
 @UseGuards(JwtAuthGuard, PermissionsGuard, RolesGuard)
@@ -59,10 +73,9 @@ export class MonitoringController {
   @Roles('administrator', 'operator')
   @ApiOperation({
     summary: '接收单条监测数据',
-    description: '接收并存储单条设备监测数据',
+    description: '接收并存储单条设备监测数据，成功后返回数据ID',
   })
-  @ApiResponse({
-    status: 200,
+  @ApiOkResponse({
     description: '接收成功',
     schema: {
       type: 'object',
@@ -80,10 +93,22 @@ export class MonitoringController {
       },
     },
   })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  @ApiResponse({ status: 401, description: '未授权' })
-  @ApiResponse({ status: 404, description: '设备不存在' })
-  @ApiResponse({ status: 500, description: '服务器错误' })
+  @ApiBadRequestResponse({
+    description: '参数验证失败',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 sensor_data:create 权限',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: '设备不存在',
+    type: ErrorResponseDto,
+  })
   async receiveMonitoringData(@Body() createDto: CreateTimeSeriesDataDto) {
     const savedData =
       await this.monitoringService.receiveMonitoringData(createDto);
@@ -115,40 +140,26 @@ export class MonitoringController {
     summary: '批量接收监测数据',
     description: '批量接收并存储设备监测数据，最多1000条/次',
   })
-  @ApiResponse({
-    status: 200,
-    description: '接收成功',
-    schema: {
-      type: 'object',
-      properties: {
-        code: { type: 'number', example: 200 },
-        message: { type: 'string', example: 'success' },
-        data: {
-          type: 'object',
-          properties: {
-            totalCount: { type: 'number', example: 100 },
-            successCount: { type: 'number', example: 98 },
-            failedCount: { type: 'number', example: 2 },
-            errors: {
-              type: 'array',
-              items: {
-                type: 'object',
-                properties: {
-                  index: { type: 'number', example: 5 },
-                  reason: { type: 'string', example: '数据格式错误' },
-                },
-              },
-            },
-          },
-        },
-        timestamp: { type: 'number', example: 1700000000000 },
-      },
-    },
+  @ApiOkResponse({
+    description: '接收成功，返回批量操作结果',
+    type: BatchOperationResultDto,
   })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  @ApiResponse({ status: 401, description: '未授权' })
-  @ApiResponse({ status: 404, description: '设备不存在' })
-  @ApiResponse({ status: 500, description: '服务器错误' })
+  @ApiBadRequestResponse({
+    description: '参数验证失败或数据格式错误',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 sensor_data:create 权限',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: '设备不存在',
+    type: ErrorResponseDto,
+  })
   async receiveBatchMonitoringData(
     @Body() batchDto: CreateBatchTimeSeriesDataDto,
   ) {
@@ -178,38 +189,52 @@ export class MonitoringController {
     summary: '查询监测数据',
     description: '根据设备、指标类型、时间范围查询监测数据，支持分页',
   })
-  @ApiResponse({
-    status: 200,
-    description: '查询成功',
+  @ApiOkResponse({
+    description: '成功获取监测数据列表',
     schema: {
       type: 'object',
       properties: {
         code: { type: 'number', example: 200 },
-        message: { type: 'string', example: 'success' },
+        message: { type: 'string', example: '查询成功' },
         data: {
           type: 'object',
           properties: {
-            items: { type: 'array', items: { type: 'object' } },
-            total: { type: 'number', example: 5000 },
+            items: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/TimeSeriesData' },
+            },
+            total: { type: 'number', example: 1000 },
             page: { type: 'number', example: 1 },
-            pageSize: { type: 'number', example: 100 },
+            pageSize: { type: 'number', example: 20 },
             totalPages: { type: 'number', example: 50 },
           },
         },
-        timestamp: { type: 'number', example: 1700000000000 },
+        timestamp: { type: 'number', example: 1734567890123 },
       },
     },
   })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  @ApiResponse({ status: 401, description: '未授权' })
-  @ApiResponse({ status: 404, description: '设备不存在' })
-  @ApiResponse({ status: 500, description: '服务器错误' })
+  @ApiBadRequestResponse({
+    description: '查询参数格式错误',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 sensor_data:read 权限',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: '设备不存在',
+    type: ErrorResponseDto,
+  })
   async queryMonitoringData(@Query() queryDto: QueryTimeSeriesDataDto) {
     const result = await this.monitoringService.queryMonitoringData(queryDto);
 
     return {
       code: 200,
-      message: 'success',
+      message: '查询成功',
       data: result,
       timestamp: Date.now(),
     };
@@ -255,33 +280,26 @@ export class MonitoringController {
     required: true,
     type: Number,
   })
-  @ApiResponse({
-    status: 200,
-    description: '查询成功',
-    schema: {
-      type: 'object',
-      properties: {
-        code: { type: 'number', example: 200 },
-        message: { type: 'string', example: 'success' },
-        data: {
-          type: 'object',
-          properties: {
-            metricType: { type: 'string', example: 'vibration' },
-            count: { type: 'number', example: 1000 },
-            maxValue: { type: 'number', example: 25.5 },
-            minValue: { type: 'number', example: 8.2 },
-            avgValue: { type: 'number', example: 15.3 },
-            unit: { type: 'string', example: 'mm/s' },
-          },
-        },
-        timestamp: { type: 'number', example: 1700000000000 },
-      },
-    },
+  @ApiOkResponse({
+    description: '查询成功，返回统计数据',
+    type: DataStatisticsResponseDto,
   })
-  @ApiResponse({ status: 400, description: '参数错误' })
-  @ApiResponse({ status: 401, description: '未授权' })
-  @ApiResponse({ status: 404, description: '设备不存在' })
-  @ApiResponse({ status: 500, description: '服务器错误' })
+  @ApiBadRequestResponse({
+    description: '查询参数格式错误或参数验证失败',
+    type: ErrorResponseDto,
+  })
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 sensor_data:read 权限',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
+    description: '设备不存在',
+    type: ErrorResponseDto,
+  })
   async getDataStatistics(
     @Query('equipmentId') equipmentId: string,
     @Query('metricType') metricType: MetricType,

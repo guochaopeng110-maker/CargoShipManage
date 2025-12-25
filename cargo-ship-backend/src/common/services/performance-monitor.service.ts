@@ -102,6 +102,14 @@ export class PerformanceMonitorService {
   // 慢请求阈值（毫秒）
   private readonly SLOW_REQUEST_THRESHOLD = 500;
 
+  // 批量推送指标
+  private batchPushMetrics = {
+    totalBatches: 0,
+    totalRecords: 0,
+    totalChunks: 0,
+    durations: [] as number[],
+  };
+
   constructor() {
     // 定期重置统计数据（每小时）
     setInterval(
@@ -197,6 +205,53 @@ export class PerformanceMonitorService {
    */
   recordCacheMiss() {
     this.metrics.cache.misses++;
+  }
+
+  /**
+   * 记录批量推送操作
+   * @param recordCount 数据记录数
+   * @param chunkCount 分片数量
+   * @param duration 推送耗时 (ms)
+   */
+  recordBatchPush(recordCount: number, chunkCount: number, duration: number) {
+    this.batchPushMetrics.totalBatches++;
+    this.batchPushMetrics.totalRecords += recordCount;
+    this.batchPushMetrics.totalChunks += chunkCount;
+    this.batchPushMetrics.durations.push(duration);
+
+    // 只保留最近 1000 条记录
+    if (this.batchPushMetrics.durations.length > 1000) {
+      this.batchPushMetrics.durations.shift();
+    }
+
+    // 记录慢推送 (超过 1 秒)
+    if (duration > 1000) {
+      this.logger.warn(
+        `检测到慢推送: 数据量=${recordCount}, 分片数=${chunkCount}, 耗时=${duration}ms`,
+      );
+    }
+  }
+
+  /**
+   * 获取批量推送指标
+   */
+  getBatchPushMetrics() {
+    const avgDuration = this.calculateAverage(this.batchPushMetrics.durations);
+    const slowPushCount = this.batchPushMetrics.durations.filter(
+      (d) => d > 1000,
+    ).length;
+
+    return {
+      totalBatches: this.batchPushMetrics.totalBatches,
+      totalRecords: this.batchPushMetrics.totalRecords,
+      totalChunks: this.batchPushMetrics.totalChunks,
+      averageDuration: avgDuration,
+      slowPushCount,
+      slowPushRate:
+        this.batchPushMetrics.durations.length > 0
+          ? (slowPushCount / this.batchPushMetrics.durations.length) * 100
+          : 0,
+    };
   }
 
   /**
@@ -347,6 +402,14 @@ export class PerformanceMonitorService {
         hits: 0,
         misses: 0,
       },
+    };
+
+    // 重置批量推送指标
+    this.batchPushMetrics = {
+      totalBatches: 0,
+      totalRecords: 0,
+      totalChunks: 0,
+      durations: [],
     };
   }
 

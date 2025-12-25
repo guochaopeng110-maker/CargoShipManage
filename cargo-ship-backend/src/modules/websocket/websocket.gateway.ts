@@ -146,13 +146,6 @@ export class WebsocketGateway
 
     // 发送缓冲消息（如果有）
     this.sendBufferedMessages(auth.userId, client);
-
-    // 广播用户上线事件（仅发送给管理员）
-    this.server.to('role:Administrator').emit('user:online', {
-      userId: auth.userId,
-      username: auth.username,
-      timestamp: new Date().toISOString(),
-    });
   }
 
   /**
@@ -172,13 +165,6 @@ export class WebsocketGateway
         // 如果用户没有其他连接，从映射中移除
         if (userSocketSet.size === 0) {
           this.userSockets.delete(auth.userId);
-
-          // 广播用户离线事件（仅发送给管理员）
-          this.server.to('role:Administrator').emit('user:offline', {
-            userId: auth.userId,
-            username: auth.username,
-            timestamp: new Date().toISOString(),
-          });
         }
       }
 

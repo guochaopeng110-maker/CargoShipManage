@@ -4,7 +4,9 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
+  IsString,
   Min,
+  MaxLength,
   ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -16,6 +18,18 @@ import {
 
 /**
  * 创建阈值配置 DTO
+ *
+ * 必填字段：
+ * - equipmentId: 设备ID
+ * - metricType: 指标类型
+ * - duration: 持续时间
+ * - severity: 严重程度
+ * - upperLimit 或 lowerLimit: 至少一个
+ *
+ * 推荐字段：
+ * - monitoringPoint: 监测点名称（用于精确匹配告警规则）
+ * - faultName: 故障名称（便于操作员理解）
+ * - recommendedAction: 处理措施（指导操作员响应）
  */
 export class CreateThresholdDto {
   /**
@@ -40,6 +54,51 @@ export class CreateThresholdDto {
   @IsNotEmpty({ message: '指标类型不能为空' })
   @IsEnum(MetricType, { message: '指标类型无效' })
   metricType: MetricType;
+
+  /**
+   * 监测点名称（推荐填写）
+   * 用于精确匹配告警规则到特定的业务监测点
+   * 例如：同一设备可能有多个电压监测点("总电压"、"单体电压"),
+   * 通过此字段可以为每个监测点配置独立的阈值
+   */
+  @ApiPropertyOptional({
+    description: '监测点名称（推荐填写，用于精确匹配告警规则）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
+
+  /**
+   * 故障名称（推荐填写）
+   * 描述触发告警时的具体故障类型,便于操作员快速理解问题
+   * 例如："总压过压"、"总压欠压"、"电机超速"、"轴承温度过高"
+   */
+  @ApiPropertyOptional({
+    description: '故障名称（推荐填写，描述具体故障类型）',
+    example: '总压过压',
+    maxLength: 200,
+  })
+  @IsOptional()
+  @IsString({ message: '故障名称必须是字符串' })
+  @MaxLength(200, { message: '故障名称长度不能超过200个字符' })
+  faultName?: string;
+
+  /**
+   * 处理措施（可选）
+   * 建议操作员在告警触发时采取的纠正措施
+   * 可以是多行文本,包含详细的操作步骤
+   */
+  @ApiPropertyOptional({
+    description: '处理措施（可选，建议操作员采取的纠正措施）',
+    example:
+      '1. 检查电池单体均衡状态\n2. 检查充电系统是否正常\n3. 必要时停止充电',
+  })
+  @IsOptional()
+  @IsString({ message: '处理措施必须是字符串' })
+  recommendedAction?: string;
 
   /**
    * 上限值（可选）

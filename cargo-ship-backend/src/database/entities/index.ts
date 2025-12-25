@@ -3,6 +3,7 @@ export * from './role.entity';
 export * from './permission.entity';
 export * from './audit-log.entity';
 export * from './equipment.entity';
+export * from './monitoring-point.entity';
 export * from './time-series-data.entity';
 export * from './threshold-config.entity';
 export * from './alarm-record.entity';

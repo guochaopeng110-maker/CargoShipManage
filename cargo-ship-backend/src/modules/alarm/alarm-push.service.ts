@@ -1,7 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository, In } from 'typeorm';
 import { WebsocketGateway } from '../websocket/websocket.gateway';
 import { AlarmRecord } from '../../database/entities/alarm-record.entity';
 import { AlarmSeverity } from '../../database/entities/threshold-config.entity';
+import { Equipment } from '../../database/entities/equipment.entity';
+import { CacheService } from '../../common/services/cache.service';
 
 /**
  * 实时告警推送服务
@@ -15,23 +19,38 @@ import { AlarmSeverity } from '../../database/entities/threshold-config.entity';
 @Injectable()
 export class AlarmPushService {
   private readonly logger = new Logger(AlarmPushService.name);
+  private readonly EQUIPMENT_CACHE_TTL = 3600; // 缓存1小时
 
-  constructor(private readonly websocketGateway: WebsocketGateway) {}
+  constructor(
+    private readonly websocketGateway: WebsocketGateway,
+    @InjectRepository(Equipment)
+    private readonly equipmentRepository: Repository<Equipment>,
+    private readonly cacheService: CacheService,
+  ) {}
 
   /**
-   * 推送新告警
+   * 推送告警 (创建或更新)
+   *
+   * 统一处理告警的创建和更新推送,使用 alarm:push 事件
+   * 这是推荐的推送方法,取代了 pushNewAlarm() 和 pushAlarmStatusUpdate()
    *
    * @param alarm 告警记录
    */
-  async pushNewAlarm(alarm: AlarmRecord): Promise<void> {
-    this.logger.log(
-      `推送新告警: 设备=${alarm.equipmentId}, 严重程度=${alarm.severity}`,
-    );
+  async pushUpsertAlarm(alarm: AlarmRecord): Promise<void> {
+    // 获取设备编号(deviceId)
+    const deviceId = await this.getDeviceId(alarm.equipmentId);
 
-    // 构建告警消息
+    // 构建日志消息,包含监测点和故障名称
+    const logMsg = alarm.monitoringPoint
+      ? `推送告警: 设备=${deviceId}, 监测点=${alarm.monitoringPoint}, 故障=${alarm.faultName || '未指定'}, 状态=${alarm.status}`
+      : `推送告警: 设备=${deviceId}, 状态=${alarm.status}`;
+
+    this.logger.log(logMsg);
+
+    // 构建告警消息 - 包含完整的业务上下文
     const alarmMessage = {
       id: alarm.id,
-      equipmentId: alarm.equipmentId,
+      equipmentId: deviceId, // 使用设备编号
       severity: alarm.severity,
       severityText: this.getSeverityText(alarm.severity),
       metricType: alarm.abnormalMetricType,
@@ -39,85 +58,89 @@ export class AlarmPushService {
       thresholdRange: alarm.thresholdRange,
       triggeredAt: alarm.triggeredAt,
       status: alarm.status,
+      statusText: this.getStatusText(alarm.status),
       timestamp: new Date().toISOString(),
+
+      // 业务上下文信息
+      monitoringPoint: alarm.monitoringPoint, // 监测点名称(如"总电压")
+      faultName: alarm.faultName, // 故障名称(如"总压过压")
+      recommendedAction: alarm.recommendedAction, // 处理措施建议
+
+      // 处理信息(仅在已处理时存在)
+      handler: alarm.handler,
+      handledAt: alarm.handledAt,
+      handleNote: alarm.handleNote,
     };
 
-    // 根据告警严重程度决定推送范围
+    // 推送给订阅该设备的用户
+    // 使用设备编号作为房间名
+    this.websocketGateway.sendToEquipment(deviceId, 'alarm:push', alarmMessage);
+
+    // 严重告警推送给管理角色
     if (
       alarm.severity === AlarmSeverity.CRITICAL ||
       alarm.severity === AlarmSeverity.HIGH
     ) {
-      // 严重和高级告警：推送给管理员和运维人员
       this.websocketGateway.sendToRole(
         'administrator',
-        'alarm:new',
+        'alarm:push',
         alarmMessage,
       );
-      this.websocketGateway.sendToRole('operator', 'alarm:new', alarmMessage);
+      this.websocketGateway.sendToRole('operator', 'alarm:push', alarmMessage);
 
       this.logger.log(`严重告警已推送给管理员和运维人员: ${alarm.id}`);
     }
-
-    // 推送给订阅该设备的用户
-    this.websocketGateway.sendToEquipment(
-      alarm.equipmentId,
-      'alarm:new',
-      alarmMessage,
-    );
-
-    // 同时广播告警计数更新（用于刷新告警徽章）
-    this.broadcastAlarmCount();
   }
 
   /**
-   * 推送告警状态更新
-   *
-   * @param alarm 更新后的告警记录
+   * 获取设备编号(deviceId)
+   * 优先从缓存获取，否则查询数据库
    */
-  async pushAlarmStatusUpdate(alarm: AlarmRecord): Promise<void> {
-    this.logger.log(`推送告警状态更新: ID=${alarm.id}, 新状态=${alarm.status}`);
+  private async getDeviceId(equipmentUuid: string): Promise<string> {
+    const cacheKey = `equipment:uuid:${equipmentUuid}`;
+    const cachedDeviceId = this.cacheService.get<string>(cacheKey);
 
-    const updateMessage = {
-      id: alarm.id,
-      equipmentId: alarm.equipmentId,
-      status: alarm.status,
-      statusText: this.getStatusText(alarm.status),
-      handler: alarm.handler,
-      handledAt: alarm.handledAt,
-      handleNote: alarm.handleNote,
-      timestamp: new Date().toISOString(),
-    };
+    if (cachedDeviceId) {
+      return cachedDeviceId;
+    }
 
-    // 推送给订阅该设备的用户
-    this.websocketGateway.sendToEquipment(
-      alarm.equipmentId,
-      'alarm:update',
-      updateMessage,
-    );
+    const equipment = await this.equipmentRepository.findOne({
+      where: { id: equipmentUuid },
+      select: ['deviceId'],
+    });
 
-    // 推送给管理员和运维人员
-    this.websocketGateway.sendToRole(
-      'administrator',
-      'alarm:update',
-      updateMessage,
-    );
-    this.websocketGateway.sendToRole('operator', 'alarm:update', updateMessage);
+    if (equipment) {
+      this.cacheService.set(
+        cacheKey,
+        equipment.deviceId,
+        this.EQUIPMENT_CACHE_TTL,
+      );
+      return equipment.deviceId;
+    }
 
-    // 更新告警计数
-    this.broadcastAlarmCount();
+    // 如果找不到设备，回退使用 UUID (虽然不理想，但保证不报错)
+    this.logger.warn(`无法找到设备UUID对应的编号: ${equipmentUuid}`);
+    return equipmentUuid;
   }
 
   /**
    * 推送批量告警
+   *
+   * 用于历史导入和批量创建场景
    *
    * @param alarms 告警记录数组
    */
   async pushBatchAlarms(alarms: AlarmRecord[]): Promise<void> {
     this.logger.log(`批量推送 ${alarms.length} 条告警`);
 
+    // 1. 批量转换 UUID 为 deviceId
+    const uuids = Array.from(new Set(alarms.map((a) => a.equipmentId)));
+    const deviceIdMap = await this.convertUuidsToDeviceIds(uuids);
+
+    // 构建告警消息列表 - 包含完整的业务上下文
     const alarmMessages = alarms.map((alarm) => ({
       id: alarm.id,
-      equipmentId: alarm.equipmentId,
+      equipmentId: deviceIdMap.get(alarm.equipmentId) || alarm.equipmentId, // 使用设备编号
       severity: alarm.severity,
       severityText: this.getSeverityText(alarm.severity),
       metricType: alarm.abnormalMetricType,
@@ -125,9 +148,14 @@ export class AlarmPushService {
       thresholdRange: alarm.thresholdRange,
       triggeredAt: alarm.triggeredAt,
       status: alarm.status,
+
+      // 新增字段: 业务上下文信息
+      monitoringPoint: alarm.monitoringPoint, // 监测点名称
+      faultName: alarm.faultName, // 故障名称
+      recommendedAction: alarm.recommendedAction, // 处理措施建议
     }));
 
-    // 推送给管理员和运维人员
+    // 推送给管理员和运维人员 - 统一使用 alarm:batch 事件
     this.websocketGateway.sendToRole('administrator', 'alarm:batch', {
       alarms: alarmMessages,
       count: alarms.length,
@@ -135,23 +163,6 @@ export class AlarmPushService {
     this.websocketGateway.sendToRole('operator', 'alarm:batch', {
       alarms: alarmMessages,
       count: alarms.length,
-    });
-
-    // 更新告警计数
-    this.broadcastAlarmCount();
-  }
-
-  /**
-   * 广播告警统计信息
-   *
-   * 通知所有用户更新告警计数徽章
-   */
-  private broadcastAlarmCount(): void {
-    // 这里可以查询数据库获取实时统计，为了性能考虑，可以使用缓存
-    // 暂时发送一个通知，让客户端自己刷新
-    this.websocketGateway.broadcast('alarm:count:update', {
-      timestamp: new Date().toISOString(),
-      message: '告警数据已更新，请刷新',
     });
   }
 
@@ -169,6 +180,47 @@ export class AlarmPushService {
       'alarm:trend',
       trendData,
     );
+  }
+
+  /**
+   * 批量转换设备 UUID 为 deviceId (使用缓存)
+   */
+  private async convertUuidsToDeviceIds(
+    uuids: string[],
+  ): Promise<Map<string, string>> {
+    const result = new Map<string, string>();
+    const missingUuids: string[] = [];
+
+    // 1. 尝试从缓存获取
+    for (const uuid of uuids) {
+      const cacheKey = `equipment:uuid:${uuid}`;
+      const cachedDeviceId = this.cacheService.get<string>(cacheKey);
+
+      if (cachedDeviceId) {
+        result.set(uuid, cachedDeviceId);
+      } else {
+        missingUuids.push(uuid);
+      }
+    }
+
+    // 2. 批量查询数据库 (使用 IN 查询)
+    if (missingUuids.length > 0) {
+      const equipments = await this.equipmentRepository.find({
+        where: { id: In(missingUuids) },
+        select: ['id', 'deviceId'],
+      });
+
+      // 3. 回填缓存
+      for (const eq of equipments) {
+        result.set(eq.id, eq.deviceId);
+
+        // 写入缓存
+        const cacheKey = `equipment:uuid:${eq.id}`;
+        this.cacheService.set(cacheKey, eq.deviceId, this.EQUIPMENT_CACHE_TTL);
+      }
+    }
+
+    return result;
   }
 
   // ========== 辅助方法 ==========

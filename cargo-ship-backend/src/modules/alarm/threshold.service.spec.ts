@@ -21,6 +21,9 @@ const createMockThreshold = (
     id: 'threshold-id',
     equipmentId: 'equipment-id',
     metricType: MetricType.TEMPERATURE,
+    monitoringPoint: undefined,
+    faultName: undefined,
+    recommendedAction: undefined,
     upperLimit: 85,
     lowerLimit: 10,
     duration: 60000,
@@ -36,6 +39,10 @@ const createMockThreshold = (
     isTriggered: jest.fn(),
     getThresholdDescription: jest.fn(),
     getSeverityText: jest.fn(),
+    hasMonitoringPoint: jest.fn().mockReturnValue(false),
+    hasFaultName: jest.fn().mockReturnValue(false),
+    hasRecommendedAction: jest.fn().mockReturnValue(false),
+    getFullIdentifier: jest.fn(),
     ...partial,
   }) as ThresholdConfig;
 
@@ -64,7 +71,16 @@ describe('ThresholdService', () => {
       create: jest.fn(),
       save: jest.fn(),
       softRemove: jest.fn(),
-      createQueryBuilder: jest.fn(),
+      createQueryBuilder: jest.fn(() => ({
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(0),
+        getMany: jest.fn().mockResolvedValue([]),
+        getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+      })),
     };
 
     const mockEquipmentRepository = {
@@ -588,6 +604,281 @@ describe('ThresholdService', () => {
       // Assert: 验证结果（只有启用的）
       expect(result).toHaveLength(1);
       expect(result[0].ruleStatus).toBe(RuleStatus.ENABLED);
+    });
+  });
+
+  // ==================== 新字段功能测试 ====================
+  describe('监测点、故障名称和处理措施字段', () => {
+    it('应该成功创建包含监测点的阈值配置', async () => {
+      // Arrange: 准备包含监测点的数据
+      const createDto = {
+        equipmentId: 'battery-equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        recommendedAction: '显示；报警；切断输出',
+        upperLimit: 683.1,
+        duration: 5000,
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const mockEquipment = createMockEquipment({ id: 'battery-equipment-id' });
+      const mockThreshold = createMockThreshold({
+        ...createDto,
+        hasMonitoringPoint: jest.fn().mockReturnValue(true),
+        hasFaultName: jest.fn().mockReturnValue(true),
+        hasRecommendedAction: jest.fn().mockReturnValue(true),
+      });
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      thresholdRepository.create.mockReturnValue(mockThreshold);
+      thresholdRepository.save.mockResolvedValue(mockThreshold);
+
+      // Act: 执行操作
+      const result = await service.create(createDto, 'user-id');
+
+      // Assert: 验证新字段被正确保存
+      expect(result.monitoringPoint).toBe('总电压');
+      expect(result.faultName).toBe('总压过压');
+      expect(result.recommendedAction).toBe('显示；报警；切断输出');
+      expect(thresholdRepository.save).toHaveBeenCalled();
+    });
+
+    it('应该支持同一设备同一指标类型的不同监测点', async () => {
+      // Arrange: 准备两个不同监测点的阈值
+      const totalVoltageDto = {
+        equipmentId: 'battery-equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        upperLimit: 683.1,
+        duration: 5000,
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const singleVoltageDto = {
+        equipmentId: 'battery-equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '单体电压',
+        faultName: '单体过压',
+        upperLimit: 3.45,
+        duration: 5000,
+        severity: AlarmSeverity.MEDIUM,
+      };
+
+      const mockEquipment = createMockEquipment({ id: 'battery-equipment-id' });
+      const mockTotalVoltageThreshold = createMockThreshold({
+        ...totalVoltageDto,
+        id: 'threshold-1',
+      });
+      const mockSingleVoltageThreshold = createMockThreshold({
+        ...singleVoltageDto,
+        id: 'threshold-2',
+      });
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      thresholdRepository.create
+        .mockReturnValueOnce(mockTotalVoltageThreshold)
+        .mockReturnValueOnce(mockSingleVoltageThreshold);
+      thresholdRepository.save
+        .mockResolvedValueOnce(mockTotalVoltageThreshold)
+        .mockResolvedValueOnce(mockSingleVoltageThreshold);
+
+      // Act: 执行操作
+      const result1 = await service.create(totalVoltageDto, 'user-id');
+      const result2 = await service.create(singleVoltageDto, 'user-id');
+
+      // Assert: 验证两个不同监测点的阈值都被创建
+      expect(result1.monitoringPoint).toBe('总电压');
+      expect(result1.faultName).toBe('总压过压');
+      expect(result2.monitoringPoint).toBe('单体电压');
+      expect(result2.faultName).toBe('单体过压');
+    });
+
+    it('应该支持查询特定监测点的阈值配置', async () => {
+      // Arrange: 准备查询条件
+      const queryDto = {
+        equipmentId: 'battery-equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+      };
+
+      const mockThresholds = [
+        createMockThreshold({
+          id: '1',
+          monitoringPoint: '总电压',
+          faultName: '总压过压',
+          upperLimit: 683.1,
+        }),
+        createMockThreshold({
+          id: '2',
+          monitoringPoint: '总电压',
+          faultName: '总压欠压',
+          lowerLimit: 584.1,
+        }),
+      ];
+
+      // Mock createQueryBuilder to return the thresholds
+      const mockQueryBuilder = {
+        leftJoinAndSelect: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        orderBy: jest.fn().mockReturnThis(),
+        skip: jest.fn().mockReturnThis(),
+        take: jest.fn().mockReturnThis(),
+        getCount: jest.fn().mockResolvedValue(2),
+        getMany: jest.fn().mockResolvedValue(mockThresholds),
+        getManyAndCount: jest.fn().mockResolvedValue([mockThresholds, 2]),
+      };
+      thresholdRepository.createQueryBuilder = jest.fn(
+        () => mockQueryBuilder as any,
+      );
+
+      // Act: 执行操作
+      const result = await service.findAll(queryDto);
+
+      // Assert: 验证返回了特定监测点的阈值
+      expect(result.items).toHaveLength(2);
+      expect(result.total).toBe(2);
+      expect(result.items[0].monitoringPoint).toBe('总电压');
+      expect(result.items[1].monitoringPoint).toBe('总电压');
+    });
+
+    it('应该允许监测点为空（向后兼容）', async () => {
+      // Arrange: 准备不含监测点的数据
+      const createDto = {
+        equipmentId: 'equipment-id',
+        metricType: MetricType.TEMPERATURE,
+        upperLimit: 85,
+        duration: 60000,
+        severity: AlarmSeverity.HIGH,
+      };
+
+      const mockEquipment = createMockEquipment();
+      const mockThreshold = createMockThreshold({
+        ...createDto,
+        monitoringPoint: undefined,
+        faultName: undefined,
+        recommendedAction: undefined,
+      });
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      thresholdRepository.create.mockReturnValue(mockThreshold);
+      thresholdRepository.save.mockResolvedValue(mockThreshold);
+
+      // Act: 执行操作
+      const result = await service.create(createDto, 'user-id');
+
+      // Assert: 验证可以创建不含监测点的阈值
+      expect(result).toBeDefined();
+      expect(result.monitoringPoint).toBeUndefined();
+    });
+
+    it('应该支持更新监测点、故障名称和处理措施', async () => {
+      // Arrange: 准备更新数据
+      const updateDto = {
+        monitoringPoint: '总电压(更新)',
+        faultName: '总压过压(更新)',
+        recommendedAction: '显示；报警；切断输出；通知管理员',
+      };
+
+      const existingThreshold = createMockThreshold({
+        id: 'threshold-id',
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        recommendedAction: '显示；报警；切断输出',
+      });
+
+      const updatedThreshold = createMockThreshold({
+        ...existingThreshold,
+        ...updateDto,
+      });
+
+      thresholdRepository.findOne.mockResolvedValue(existingThreshold);
+      thresholdRepository.save.mockResolvedValue(updatedThreshold);
+
+      // Act: 执行操作
+      const result = await service.update('threshold-id', updateDto, 'user-id');
+
+      // Assert: 验证字段被正确更新
+      expect(result.monitoringPoint).toBe('总电压(更新)');
+      expect(result.faultName).toBe('总压过压(更新)');
+      expect(result.recommendedAction).toBe('显示；报警；切断输出；通知管理员');
+    });
+
+    it('应该在查询结果中包含监测点和故障信息', async () => {
+      // Arrange: 准备包含完整信息的阈值
+      const mockThreshold = createMockThreshold({
+        id: 'threshold-id',
+        equipmentId: 'battery-equipment-id',
+        metricType: MetricType.VOLTAGE,
+        monitoringPoint: '总电压',
+        faultName: '总压过压',
+        recommendedAction: '显示；报警；切断输出',
+        upperLimit: 683.1,
+        severity: AlarmSeverity.MEDIUM,
+        hasMonitoringPoint: jest.fn().mockReturnValue(true),
+        hasFaultName: jest.fn().mockReturnValue(true),
+        hasRecommendedAction: jest.fn().mockReturnValue(true),
+      });
+
+      thresholdRepository.findOne.mockResolvedValue(mockThreshold);
+
+      // Act: 执行操作
+      const result = await service.findOne('threshold-id');
+
+      // Assert: 验证返回的数据包含所有新字段
+      expect(result.monitoringPoint).toBe('总电压');
+      expect(result.faultName).toBe('总压过压');
+      expect(result.recommendedAction).toBe('显示；报警；切断输出');
+      expect(result.hasMonitoringPoint()).toBe(true);
+      expect(result.hasFaultName()).toBe(true);
+      expect(result.hasRecommendedAction()).toBe(true);
+    });
+
+    it('应该支持批量创建带监测点的阈值配置', async () => {
+      // Arrange: 准备批量数据（包含监测点）
+      const mockEquipment = createMockEquipment({ id: 'battery-equipment-id' });
+
+      const thresholdsData = [
+        {
+          equipmentId: 'battery-equipment-id',
+          metricType: MetricType.VOLTAGE,
+          monitoringPoint: '总电压',
+          faultName: '总压过压',
+          upperLimit: 683.1,
+          duration: 5000,
+          severity: AlarmSeverity.MEDIUM,
+        },
+        {
+          equipmentId: 'battery-equipment-id',
+          metricType: MetricType.VOLTAGE,
+          monitoringPoint: '单体电压',
+          faultName: '单体过压',
+          upperLimit: 3.45,
+          duration: 5000,
+          severity: AlarmSeverity.MEDIUM,
+        },
+      ];
+
+      equipmentRepository.findOne.mockResolvedValue(mockEquipment);
+      thresholdsData.forEach((data, index) => {
+        const mockThreshold = createMockThreshold({
+          ...data,
+          id: `threshold-${index}`,
+        });
+        thresholdRepository.create.mockReturnValueOnce(mockThreshold);
+        thresholdRepository.save.mockResolvedValueOnce(mockThreshold);
+      });
+
+      // Act: 执行操作
+      const results = await Promise.all(
+        thresholdsData.map((data) => service.create(data, 'user-id')),
+      );
+
+      // Assert: 验证所有阈值都被创建
+      expect(results).toHaveLength(2);
+      expect(results[0].monitoringPoint).toBe('总电压');
+      expect(results[1].monitoringPoint).toBe('单体电压');
     });
   });
 });

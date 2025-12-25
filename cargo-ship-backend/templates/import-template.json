@@ -1,0 +1,165 @@
+[
+  {
+    "equipmentId": "SYS-BAT-001",
+    "equipmentName": "电池系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "总电压",
+        "metricType": "voltage",
+        "value": 650.5,
+        "unit": "V"
+      },
+      {
+        "monitoringPoint": "SOC荷电状态",
+        "metricType": "power",
+        "value": 85.5,
+        "unit": "%"
+      },
+      {
+        "monitoringPoint": "充电电流",
+        "metricType": "current",
+        "value": 120.3,
+        "unit": "A"
+      },
+      {
+        "monitoringPoint": "最高充电温度",
+        "metricType": "temperature",
+        "value": 35.2,
+        "unit": "°C"
+      },
+      {
+        "monitoringPoint": "绝缘电阻",
+        "metricType": "resistance",
+        "value": 1800,
+        "unit": "kΩ"
+      }
+    ]
+  },
+  {
+    "equipmentId": "SYS-PROP-L-001",
+    "equipmentName": "左推进系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "电机转速",
+        "metricType": "speed",
+        "value": 1500,
+        "unit": "rpm"
+      },
+      {
+        "monitoringPoint": "电机功率",
+        "metricType": "power",
+        "value": 1200,
+        "unit": "kW"
+      },
+      {
+        "monitoringPoint": "前轴承温度",
+        "metricType": "temperature",
+        "value": 65.3,
+        "unit": "°C"
+      },
+      {
+        "monitoringPoint": "逆变器电压",
+        "metricType": "voltage",
+        "value": 600,
+        "unit": "V"
+      }
+    ]
+  },
+  {
+    "equipmentId": "SYS-PROP-R-001",
+    "equipmentName": "右推进系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "电机转速",
+        "metricType": "speed",
+        "value": 1498,
+        "unit": "rpm"
+      },
+      {
+        "monitoringPoint": "后轴承温度",
+        "metricType": "temperature",
+        "value": 64.8,
+        "unit": "°C"
+      }
+    ]
+  },
+  {
+    "equipmentId": "SYS-INV-1-001",
+    "equipmentName": "1#日用逆变器系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "输入直流电压",
+        "metricType": "voltage",
+        "value": 650,
+        "unit": "V"
+      },
+      {
+        "monitoringPoint": "输出交流电流",
+        "metricType": "current",
+        "value": 150,
+        "unit": "A"
+      }
+    ]
+  },
+  {
+    "equipmentId": "SYS-DCPD-001",
+    "equipmentName": "直流配电板系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "直流母排电压",
+        "metricType": "voltage",
+        "value": 648,
+        "unit": "V"
+      },
+      {
+        "monitoringPoint": "绝缘电阻",
+        "metricType": "resistance",
+        "value": 2000,
+        "unit": "kΩ"
+      }
+    ]
+  },
+  {
+    "equipmentId": "SYS-BILGE-001",
+    "equipmentName": "舱底水系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "1#集水井水位",
+        "metricType": "level",
+        "value": 50,
+        "unit": "mm"
+      },
+      {
+        "monitoringPoint": "2#集水井水位",
+        "metricType": "level",
+        "value": 45,
+        "unit": "mm"
+      }
+    ]
+  },
+  {
+    "equipmentId": "SYS-COOL-001",
+    "equipmentName": "冷却水泵系统",
+    "timestamp": "2025-01-01T10:00:00Z",
+    "metrics": [
+      {
+        "monitoringPoint": "1#冷却水温",
+        "metricType": "temperature",
+        "value": 28.5,
+        "unit": "°C"
+      },
+      {
+        "monitoringPoint": "冷却水压力",
+        "metricType": "pressure",
+        "value": 0.15,
+        "unit": "MPa"
+      }
+    ]
+  }
+]

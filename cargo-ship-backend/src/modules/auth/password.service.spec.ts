@@ -342,8 +342,8 @@ describe('PasswordService', () => {
     });
 
     it('应该接受所有支持的特殊字符', () => {
-      // 支持的特殊字符：@$!%*?&
-      const specialChars = ['@', '$', '!', '%', '*', '?', '&'];
+      // 支持的特殊字符：@$!%*?&#
+      const specialChars = ['@', '$', '!', '%', '*', '?', '&', '#'];
 
       specialChars.forEach((char) => {
         const password = `Password123${char}`;
@@ -353,13 +353,13 @@ describe('PasswordService', () => {
     });
 
     it('应该拒绝只包含不支持的特殊字符的密码', () => {
-      // 不支持的特殊字符：#^()_+-=[]{}|;:,.<>
+      // 不支持的特殊字符：^()_+-=[]{}|;:,.<>
       const unsupportedSpecialPasswords = [
-        'Password123#',
         'Password123^',
         'Password123(',
         'Password123_',
         'Password123+',
+        'Password123=',
       ];
 
       unsupportedSpecialPasswords.forEach((password) => {

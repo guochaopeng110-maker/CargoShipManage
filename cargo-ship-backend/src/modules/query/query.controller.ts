@@ -9,16 +9,21 @@ import {
   HttpStatus,
   HttpCode,
   Res,
+  ParseUUIDPipe,
 } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
-  ApiResponse,
   ApiBearerAuth,
   ApiQuery,
   ApiParam,
+  ApiOkResponse,
+  ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiUnauthorizedResponse,
+  ApiForbiddenResponse,
 } from '@nestjs/swagger';
-import { Response } from 'express';
+
 import type { Response as ExpressResponse } from 'express';
 import * as path from 'path';
 import * as fs from 'fs';
@@ -40,6 +45,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Permissions } from '../../common/decorators/permissions.decorator';
+import { ErrorResponseDto } from '../../common/dto';
 
 /**
  * 查询与统计控制器
@@ -63,6 +69,8 @@ export class QueryController {
    */
   @Get('statistics/monitoring')
   @HttpCode(HttpStatus.OK)
+  @Permissions('device:read', 'sensor_data:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '监测数据统计',
     description:
@@ -92,25 +100,26 @@ export class QueryController {
     required: true,
     type: Number,
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '统计成功',
+  @ApiOkResponse({
+    description: '统计成功，返回监测数据统计信息',
     type: MonitoringStatsResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: '参数错误',
+  @ApiBadRequestResponse({
+    description: '参数错误或时间范围无效',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
-  })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
+  @ApiNotFoundResponse({
     description: '设备不存在',
+    type: ErrorResponseDto,
   })
-  @Permissions('device:read', 'sensor_data:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
+  })
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 device:read 和 sensor_data:read 权限',
+    type: ErrorResponseDto,
+  })
   async getMonitoringStatistics(@Query() dto: MonitoringStatisticsDto) {
     const data = await this.queryService.getMonitoringStatistics(dto);
 
@@ -129,6 +138,8 @@ export class QueryController {
    */
   @Get('statistics/alarms')
   @HttpCode(HttpStatus.OK)
+  @Permissions('alert:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '告警统计',
     description: '统计指定时间范围内的告警数据，按严重程度和处理状态分组',
@@ -157,21 +168,22 @@ export class QueryController {
     required: false,
     enum: ['low', 'medium', 'high', 'critical'],
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '统计成功',
+  @ApiOkResponse({
+    description: '统计成功，返回告警统计信息',
     type: AlarmStatsResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: '参数错误',
+  @ApiBadRequestResponse({
+    description: '参数错误或时间范围无效',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('alert:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 alert:read 权限',
+    type: ErrorResponseDto,
+  })
   async getAlarmStatistics(@Query() dto: AlarmStatisticsDto) {
     const data = await this.queryService.getAlarmStatistics(dto);
 
@@ -190,21 +202,24 @@ export class QueryController {
    */
   @Get('statistics/equipment')
   @HttpCode(HttpStatus.OK)
+  @Permissions('device:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '设备状态概览',
     description: '获取所有设备的状态统计概览，包括在线、离线和异常设备数量',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '查询成功',
+  @ApiOkResponse({
+    description: '查询成功，返回设备状态概览',
     type: EquipmentOverviewDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('device:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 device:read 权限',
+    type: ErrorResponseDto,
+  })
   async getEquipmentOverview() {
     const data = await this.queryService.getEquipmentOverview();
 
@@ -223,6 +238,8 @@ export class QueryController {
    */
   @Get('equipment/:id/profile')
   @HttpCode(HttpStatus.OK)
+  @Permissions('device:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '获取设备完整档案',
     description:
@@ -232,22 +249,37 @@ export class QueryController {
     name: 'id',
     description: '设备ID（UUID格式）',
     type: String,
+    example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '查询成功',
+  @ApiOkResponse({
+    description: '查询成功，返回设备完整档案',
+    schema: {
+      type: 'object',
+      properties: {
+        equipment: { type: 'object', description: '设备基本信息' },
+        monitoringStats: { type: 'object', description: '监测数据统计' },
+        alarmStats: { type: 'object', description: '告警统计' },
+        healthScore: { type: 'number', description: '健康评分', example: 85 },
+      },
+    },
   })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
+  @ApiBadRequestResponse({
+    description: '设备ID格式错误（非有效的UUID）',
+    type: ErrorResponseDto,
+  })
+  @ApiNotFoundResponse({
     description: '设备不存在',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('device:read')
-  @Roles('administrator', 'operator', 'viewer')
-  async getEquipmentCompleteProfile(@Param('id') id: string) {
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 device:read 权限',
+    type: ErrorResponseDto,
+  })
+  async getEquipmentCompleteProfile(@Param('id', ParseUUIDPipe) id: string) {
     const data = await this.queryService.getEquipmentCompleteProfile(id);
 
     return {
@@ -265,25 +297,28 @@ export class QueryController {
    */
   @Post('export/monitoring')
   @HttpCode(HttpStatus.OK)
+  @Permissions('sensor_data:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '导出监测数据',
     description: '根据查询条件导出监测数据为Excel或CSV文件',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '导出成功',
+  @ApiOkResponse({
+    description: '导出成功，返回导出文件信息',
     type: ExportResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: '参数错误',
+  @ApiBadRequestResponse({
+    description: '参数错误或导出条件无效',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('sensor_data:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 sensor_data:read 权限',
+    type: ErrorResponseDto,
+  })
   async exportMonitoringData(@Body() dto: ExportMonitoringDataDto) {
     const data = await this.exportService.exportMonitoringData(dto);
 
@@ -302,25 +337,28 @@ export class QueryController {
    */
   @Post('export/alarms')
   @HttpCode(HttpStatus.OK)
+  @Permissions('alert:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '导出告警记录',
     description: '根据查询条件导出告警记录为Excel或CSV文件',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '导出成功',
+  @ApiOkResponse({
+    description: '导出成功，返回导出文件信息',
     type: ExportResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: '参数错误',
+  @ApiBadRequestResponse({
+    description: '参数错误或导出条件无效',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('alert:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 alert:read 权限',
+    type: ErrorResponseDto,
+  })
   async exportAlarms(@Body() dto: ExportAlarmsDto) {
     const data = await this.exportService.exportAlarms(dto);
 
@@ -339,29 +377,32 @@ export class QueryController {
    */
   @Post('export/reports')
   @HttpCode(HttpStatus.OK)
+  @Permissions('report:read')
+  @Roles('administrator', 'operator', 'viewer')
   @ApiOperation({
     summary: '导出健康报告',
     description: '根据查询条件导出健康评估报告为PDF文件',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '导出成功',
+  @ApiOkResponse({
+    description: '导出成功，返回导出文件信息',
     type: ExportResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.BAD_REQUEST,
-    description: '参数错误',
+  @ApiBadRequestResponse({
+    description: '参数错误或导出条件无效',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
+  @ApiNotFoundResponse({
     description: '未找到符合条件的报告',
+    type: ErrorResponseDto,
   })
-  @ApiResponse({
-    status: HttpStatus.UNAUTHORIZED,
-    description: '未授权',
+  @ApiUnauthorizedResponse({
+    description: '未授权，需要登录',
+    type: ErrorResponseDto,
   })
-  @Permissions('report:read')
-  @Roles('administrator', 'operator', 'viewer')
+  @ApiForbiddenResponse({
+    description: '权限不足，需要 report:read 权限',
+    type: ErrorResponseDto,
+  })
   async exportReports(@Body() dto: ExportReportsDto) {
     const data = await this.exportService.exportReports(dto);
 
@@ -387,14 +428,18 @@ export class QueryController {
     name: 'filename',
     description: '文件名',
     type: String,
+    example: 'monitoring-data-2025-12-15.xlsx',
   })
-  @ApiResponse({
-    status: HttpStatus.OK,
-    description: '下载成功',
+  @ApiOkResponse({
+    description: '下载成功，返回文件流',
+    schema: {
+      type: 'string',
+      format: 'binary',
+    },
   })
-  @ApiResponse({
-    status: HttpStatus.NOT_FOUND,
+  @ApiNotFoundResponse({
     description: '文件不存在或已过期',
+    type: ErrorResponseDto,
   })
   async downloadFile(
     @Param('filename') filename: string,

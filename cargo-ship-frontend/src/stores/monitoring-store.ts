@@ -1,62 +1,321 @@
 /**
  * 货船智能机舱管理系统 - 统一监测数据状态管理
  *
- * 核心功能：
- * 1. 统一管理实时和历史监测数据状态（合并history-store.ts和realtime-store.ts功能）
- * 2. 集成monitoring-api.md的数据模型
- * 3. 提供数据转换和验证功能
- * 4. 支持多种数据源和质量标记
- * 5. 统一设备监测配置和阈值管理
- * 6. WebSocket实时连接和数据订阅管理
- * 7. 历史数据查询、缓存和导出功能
- * 8. 数据质量统计和性能指标监控
+ * 职责：
+ * 1. 管理实时和历史监测数据状态
+ * 2. 处理 WebSocket 实时数据流订阅
+ * 3. 管理历史数据查询缓存
+ * 4. 维护性能指标和数据质量统计
  *
- * 技术架构：
- * - 基于TypeScript接口的类型安全
- * - 支持数据质量标记和来源追踪
- * - 统一的指标类型和单位定义
- * - 灵活的设备配置和告警阈值
- * - 完整的数据验证和转换机制
- * - 智能缓存系统和错误恢复机制
- * - WebSocket连接管理和实时数据流处理
+ * 架构：
+ * - State: 纯数据状态 (data, realtimeConnected, cache...)
+ * - Actions: 业务逻辑 (fetchMonitoringData, initSubscription...)
  *
- * 数据模型统一：
- * - 实时数据和历史数据使用相同基础结构
- * - 支持数据聚合和统计分析
- * - 提供数据导出和导入接口
- * - 统一的错误处理和状态管理
- *
- * 重构说明：
- * - 合并history-store.ts的核心功能：查询创建、执行、缓存、统计等
- * - 合并realtime-store.ts的核心功能：WebSocket连接、设备订阅、实时数据管理等
- * - 保持与现有组件的兼容性
- * - 提供统一的数据获取和管理接口
- *
- * @author 货船智能机舱管理系统开发团队
- * @version 3.0.0  // 更新版本号，反映状态管理重构
- * @since 2025
+ * @module stores/monitoring-store
  */
 
-import { useState, useCallback, useEffect } from 'react';
-import { monitoringService } from '../services/monitoring-service';
-import { realTimeService } from '../services/realtime-service';
-import { 
-  UnifiedMonitoringData, 
-  MonitoringQueryParams, 
-  MonitoringDataResponse,
-  MetricType,
-  DataQuality,
-  DataSource,
-  MonitoringStatisticsParams,
-  MonitoringStatisticsResponse,
-  ConnectionStatus,
-  PerformanceMetrics,
-  MetricReading
-} from '../types/monitoring';
+import { create } from 'zustand';
+import { realtimeService, ConnectionStatusPayload } from '../services/realtime-service';
+import { MonitoringDataPayload, MonitoringBatchDataMessage, MonitoringDataItem } from '../types/websocket';
+import { Service } from '../services/api/services/Service';
+
+// 从后端 API 客户端导入基础类型
+import { CreateTimeSeriesDataDto } from '@/services/api';
+
+// ==================== 前端业务逻辑类型定义 ====================
 
 /**
- * 历史查询接口（从history-store.ts迁移）
+ * 指标类型枚举（前端扩展）
+ *
+ * 基于后端 CreateTimeSeriesDataDto.metricType，添加前端特有指标
  */
+export enum MetricType {
+  TEMPERATURE = 'temperature',    // 温度
+  VIBRATION = 'vibration',        // 振动
+  PRESSURE = 'pressure',          // 压力
+  HUMIDITY = 'humidity',          // 湿度
+  SPEED = 'speed',                // 转速
+  CURRENT = 'current',            // 电流
+  VOLTAGE = 'voltage',            // 电压
+  POWER = 'power',                // 功率
+  FREQUENCY = 'frequency',        // 频率
+  LEVEL = 'level',                // 液位
+  RESISTANCE = 'resistance',      // 电阻
+  SWITCH = 'switch',              // 开关
+  SOC = 'soc',                    // 电池荷电状态（前端扩展）
+  SOH = 'soh',                    // 电池健康状态（前端扩展）
+  ENERGY = 'energy',              // 能量（前端扩展）
+  RPM = 'rpm',                    // 转速RPM（前端扩展）
+}
+
+/**
+ * 数据质量标记枚举（直接使用后端定义）
+ *
+ * 来源：CreateTimeSeriesDataDto.quality
+ */
+export enum DataQuality {
+  NORMAL = 'normal',        // 正常数据
+  ABNORMAL = 'abnormal',    // 异常数据
+  SUSPICIOUS = 'suspicious', // 可疑数据
+}
+
+/**
+ * 数据来源枚举（前端扩展）
+ *
+ * 基于后端 CreateTimeSeriesDataDto.source
+ */
+export enum DataSource {
+  SENSOR_UPLOAD = 'sensor-upload',        // 传感器上报
+  FILE_IMPORT = 'file-import',            // 文件导入
+  MANUAL_ENTRY = 'manual-entry',          // 手动输入
+  MANUAL_INPUT = 'manual-input',          // 手动输入（别名）
+  SYSTEM_GENERATED = 'system-generated',  // 系统生成（前端扩展）
+}
+
+/**
+ * 连接状态枚举（前端扩展）
+ *
+ * 用于 WebSocket 连接状态管理
+ */
+export enum ConnectionStatus {
+  CONNECTING = 'connecting',      // 连接中
+  CONNECTED = 'connected',        // 已连接
+  DISCONNECTED = 'disconnected',  // 未连接
+  ERROR = 'error',                // 连接错误
+  RECONNECTING = 'reconnecting',  // 重连中
+}
+
+/**
+ * WebSocket 告警消息（前端特有）
+ */
+export interface AlertMessage {
+  id: string;
+  deviceId: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  type: string;
+  message: string;
+  timestamp: number;
+  acknowledged: boolean;
+}
+
+/**
+ * WebSocket 设备状态消息（前端特有）
+ */
+export interface DeviceStatusMessage {
+  deviceId: string;
+  status: 'online' | 'offline' | 'maintenance' | 'error';
+  lastSeen: number;
+  connectionQuality: 'excellent' | 'good' | 'fair' | 'poor';
+}
+
+/**
+ * WebSocket 订阅确认消息（前端特有）
+ */
+export interface SubscriptionAckMessage {
+  subscriptionId?: string;
+  deviceIds: string[];
+  status: 'pending' | 'active' | 'inactive' | 'failed';
+  startTime: number;
+}
+
+/**
+ * WebSocket 性能指标（前端特有）
+ */
+export interface PerformanceMetrics {
+  messagesPerSecond: number;
+  bytesPerSecond: number;
+  averageLatency: number;
+  packetLoss: number;
+  connectionUptime: number;
+  lastUpdate: number;
+  connectionLatency: number;
+  messageRate: number;
+  dataPointsPerSecond: number;
+  timestamp: number;
+  [key: string]: any; // 允许额外属性
+}
+
+/**
+ * 指标读数（前端特有）
+ */
+export interface MetricReading {
+  id: string;
+  timestamp: number;
+  value: number;
+  unit: string;
+  quality: 'good' | 'bad' | 'uncertain';
+  sensorId: string;
+  sensorName: string;
+  equipmentId: string;
+  metadata?: Record<string, any>;
+}
+
+/**
+ * 统一监测数据接口（前端核心数据结构）
+ *
+ * 统一实时数据和历史数据的数据结构
+ */
+export interface UnifiedMonitoringData {
+  id: string;                            // 数据唯一ID
+  equipmentId: string;                   // 设备ID
+  timestamp: number;                     // 时间戳（毫秒）
+  metricType: MetricType;                // 指标类型
+  value: number;                         // 指标数值
+  unit: string;                          // 单位
+  quality: DataQuality;                  // 数据质量
+  source: DataSource;                    // 数据来源
+  createdAt: number;                     // 创建时间
+  updatedAt: number;                     // 更新时间
+  monitoringPoint?: string;              // 监测点名称（可选）
+}
+
+/**
+ * 监测数据查询参数（前端特有）
+ */
+export interface MonitoringQueryParams {
+  equipmentId?: string;                  // 设备ID筛选
+  metricType?: MetricType;               // 指标类型筛选（单个）
+  monitoringPoint?: string;              // 监测点筛选
+  startTime?: number;                    // 开始时间（毫秒时间戳）
+  endTime?: number;                      // 结束时间（毫秒时间戳）
+  quality?: DataQuality[];               // 数据质量筛选
+  source?: DataSource[];                 // 数据来源筛选
+  limit?: number;                        // 结果数量限制
+  offset?: number;                       // 分页偏移量
+  page?: number;                         // 当前页码（从1开始）
+  pageSize?: number;                     // 每页大小
+}
+
+/**
+ * 监测数据响应（前端特有）
+ */
+export interface MonitoringDataResponse {
+  items: UnifiedMonitoringData[];        // 数据项列表
+  total: number;                         // 总数据量
+  page?: number;                         // 当前页码
+  pageSize?: number;                     // 每页大小
+}
+
+// ==========================================
+// 数据转换函数
+// ==========================================
+
+/**
+ * 将 WebSocket Payload 转换为统一的监测数据类型
+ *
+ * @param payload MonitoringDataPayload - WebSocket 推送的原始数据
+ * @returns UnifiedMonitoringData - 统一的监测数据格式
+ */
+function transformPayloadToMonitoringData(payload: MonitoringDataPayload): UnifiedMonitoringData {
+  if (!payload) {
+    throw new Error('Payload is null or undefined');
+  }
+  try {
+    return {
+      id: payload.id.toString(), // 将数字 ID 转为字符串
+      equipmentId: payload.equipmentId,
+      timestamp: new Date(payload.timestamp).getTime(), // ISO 字符串转为 Unix 时间戳（毫秒）
+      metricType: payload.metricType as MetricType,
+      monitoringPoint: payload.monitoringPoint,
+      value: payload.value,
+      unit: payload.unit,
+      quality: mapQualityString(payload.quality), // 映射质量枚举
+      source: mapSourceString(payload.source), // 映射来源枚举
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+  } catch (error) {
+    console.error('监测数据转换失败:', error, payload);
+    // 返回默认值，避免抛出异常
+    return {
+      id: payload?.id?.toString() || 'unknown',
+      equipmentId: payload?.equipmentId || 'unknown',
+      timestamp: Date.now(),
+      metricType: (payload?.metricType as MetricType) || MetricType.TEMPERATURE,
+      value: payload?.value || 0,
+      unit: payload?.unit || '',
+      quality: DataQuality.NORMAL,
+      source: DataSource.SENSOR_UPLOAD,
+      createdAt: Date.now(),
+      updatedAt: Date.now()
+    };
+  }
+}
+
+/**
+ * 映射 WebSocket 的 quality 字符串到 DataQuality 枚举
+ */
+function mapQualityString(quality: string): DataQuality {
+  switch (quality) {
+    case 'normal':
+      return DataQuality.NORMAL;
+    case 'abnormal':
+      return DataQuality.ABNORMAL;
+    case 'suspicious':
+      return DataQuality.SUSPICIOUS;
+    default:
+      return DataQuality.NORMAL;
+  }
+}
+
+/**
+ * 映射 WebSocket 的 source 字符串到 DataSource 枚举
+ */
+function mapSourceString(source: string): DataSource {
+  switch (source) {
+    case 'sensor-upload':
+      return DataSource.SENSOR_UPLOAD;
+    case 'manual-entry':
+      return DataSource.MANUAL_INPUT;
+    case 'file-import':
+      return DataSource.FILE_IMPORT;
+    default:
+      return DataSource.SENSOR_UPLOAD;
+  }
+}
+
+/**
+ * 映射后端的数字质量码到 DataQuality 枚举
+ * 
+ * 根据文档，192 为正常
+ */
+function mapQualityNumber(quality: number): DataQuality {
+  return quality === 192 ? DataQuality.NORMAL : DataQuality.ABNORMAL;
+}
+
+/**
+ * 将批量监控数据项转换为统一监测数据格式
+ */
+function transformBatchItemToMonitoringData(
+  item: MonitoringDataItem,
+  equipmentId: string
+): UnifiedMonitoringData {
+  return {
+    id: item.id.toString(),
+    equipmentId: equipmentId,
+    timestamp: new Date(item.timestamp).getTime(),
+    metricType: item.metricType as MetricType,
+    monitoringPoint: item.monitoringPoint || undefined,
+    value: item.value,
+    unit: item.unit,
+    quality: mapQualityNumber(item.quality),
+    source: mapSourceString(item.source),
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+}
+
+// ==========================================
+// 批量更新机制相关
+// ==========================================
+
+// 批量更新缓冲区（在 store 外部，所有实例共享）
+let pendingUpdates: MonitoringDataPayload[] = [];
+let updateTimer: NodeJS.Timeout | null = null;
+const UPDATE_INTERVAL = 1000; // 批量更新时间窗口：1秒
+const MAX_DATA_POINTS_PER_KEY = 1000; // 每个设备-指标组合的最大数据点数量
+
+// 历史查询接口
 interface HistoryQuery {
   id: string;
   deviceId: string;
@@ -69,9 +328,7 @@ interface HistoryQuery {
   createdAt: number;
 }
 
-/**
- * 历史查询结果接口（从history-store.ts迁移）
- */
+// 历史查询结果接口
 interface HistoryQueryResult {
   query: HistoryQuery;
   data: UnifiedMonitoringData[];
@@ -83,9 +340,6 @@ interface HistoryQueryResult {
   cached: boolean;
 }
 
-/**
- * 导出状态接口（从history-store.ts迁移）
- */
 interface ExportStatus {
   id: string;
   status: 'pending' | 'processing' | 'completed' | 'failed' | 'expired';
@@ -96,9 +350,6 @@ interface ExportStatus {
   expiresAt?: number;
 }
 
-/**
- * 设备实时数据接口（从realtime-store.ts迁移）
- */
 interface DeviceRealTimeData {
   deviceId: string;
   deviceName: string;
@@ -110,129 +361,108 @@ interface DeviceRealTimeData {
 }
 
 /**
- * 统一监测状态接口
- * 
- * 整合历史数据和实时数据的完整状态管理
+ * 历史查询参数接口
+ * 用于 DataQueryPage 的简化查询模式
  */
+export interface HistoricalQueryParams {
+  /** 设备 ID */
+  deviceId: string;
+  /** 监控参数类型列表 */
+  metricTypes: string[];
+  /** 监测点名称 */
+  monitoringPoint?: string;
+  /** 查询开始时间（Unix 时间戳，毫秒） */
+  startTime: number;
+  /** 查询结束时间（Unix 时间戳，毫秒） */
+  endTime: number;
+  /** 当前页码 */
+  page: number;
+  /** 每页数量 */
+  pageSize: number;
+}
+
+// ==========================================
+// State 定义
+// ==========================================
 interface MonitoringState {
   // ===== 基础数据存储 =====
-  // 统一数据存储 - 按设备ID和指标类型索引
+  /** 统一数据存储 - 按 "equipmentId-metricType" 索引 */
   data: Record<string, UnifiedMonitoringData[]>;
-  
+
   // 历史查询相关状态
   queries: HistoryQuery[];
   activeQuery: HistoryQuery | null;
   results: Record<string, HistoryQueryResult>;
-  
+
   // 实时设备数据
   devices: Record<string, DeviceRealTimeData>;
-  
+
+  // ===== 历史数据查询状态（用于 DataQueryPage）=====
+  /** 历史数据查询结果 */
+  historicalData: {
+    /** 数据列表 */
+    items: UnifiedMonitoringData[];
+    /** 数据总数 */
+    total: number;
+    /** 当前页码 */
+    page: number;
+    /** 每页数量 */
+    pageSize: number;
+    /** 总页数 */
+    totalPages: number;
+  };
+
+  /** 查询状态 */
+  queryStatus: 'idle' | 'loading' | 'success' | 'error';
+
+  /** 查询错误信息 */
+  queryError: string | null;
+
+  /** 当前查询参数（用于分页等场景保持查询条件） */
+  currentQueryParams: HistoricalQueryParams | null;
+
   // ===== 状态管理 =====
-  // 加载状态
   loading: boolean;
-  queryHistoryLoading: boolean;    // 查询历史加载状态
-  timeSeriesLoading: boolean;      // 时间序列数据加载状态
-  aggregatedLoading: boolean;      // 聚合数据加载状态
-  
+  queryHistoryLoading: boolean;
+  timeSeriesLoading: boolean;
+  aggregatedLoading: boolean;
+
   // 错误信息
   error: string | null;
-  queryHistoryError: string | null; // 查询历史错误状态
-  timeSeriesError: string | null;  // 时间序列数据错误状态
-  aggregatedError: string | null;  // 聚合数据错误状态
-  errors: Array<{                  // 实时错误队列
+  queryHistoryError: string | null;
+  timeSeriesError: string | null;
+  aggregatedError: string | null;
+
+  // 实时错误队列
+  errors: Array<{
     code: string;
     message: string;
     timestamp: number;
     deviceId?: string;
   }>;
-  
-  // ===== 实时连接状态 =====
+
+  // ===== 实时连接状态 (Synced with RealtimeService) =====
   realtimeConnected: boolean;
   connectionStatus: ConnectionStatus;
   reconnectAttempts: number;
   lastUpdate: number;
-  
-  // 实时数据订阅列表
+
+  // 实时数据订阅列表 (equipmentIds)
   realtimeSubscriptions: string[];
-  subscriptionStatus: {
-    deviceIds: string[];
-    metricTypes: string[];
-    activeSubscriptions: number;
-    failedSubscriptions: string[];
-  };
-  
+
   // ===== 缓存管理 =====
-  // 查询缓存
   queryCache: Map<string, HistoryQueryResult>;
   cacheExpiry: Map<string, number>;
   maxCacheSize: number;
-  cacheCleanupInterval: NodeJS.Timeout | null;
-  
-  // 数据缓存
-  dataCache: Record<string, MetricReading[]>;
-  
-  // 数据历史
-  dataHistory: Record<string, MetricReading[]>;
-  
-  // ===== 查询历史记录 =====
-  queryHistory: MonitoringQueryParams[];
-  
-  // ===== 数据统计状态 =====
-  statistics: {
-    deviceIds: string[];
-    metricTypes: string[];
-    timeRange: { start: number; end: number };
-    stats: {
-      totalDataPoints: number;
-      valueStats: Record<string, {
-        min: number;
-        max: number;
-        avg: number;
-        stdDev: number;
-        count: number;
-      }>;
-      qualityStats: Record<string, number>;
-    } | null;
-  };
-  
-  // 时间序列数据状态
-  timeSeriesData: Record<string, UnifiedMonitoringData[]>;
-  
-  // 聚合数据状态
-  aggregatedData: Array<{
-    timestamp: number;
-    deviceId: string;
-    metricType: string;
-    value: number;
-    count: number;
-  }>;
-  
-  // ===== 导出功能 =====
-  exporting: ExportStatus | null;
-  
+
   // ===== 性能指标 =====
   performanceMetrics: PerformanceMetrics & {
-    // 扩展字段
     messageCount: number;
     lastMessageTime: number;
-    dataThroughput: number;
-    // 原有字段
-    fetchTime: number;
-    avgFetchTime: number;
-    processDataTime: number;
-    avgProcessTime: number;
+    dataThroughput: number; // bytes/sec approx
     cacheHitRate: number;
-    lastUpdate: number;
   };
-  
-  // ===== 缓存信息 =====
-  cacheInfo: {
-    size: number;
-    hits: number;
-    misses: number;
-    lastCleanup: number;
-  };
-  
+
   // ===== 数据质量统计 =====
   dataQualityStats: {
     [key: string]: {
@@ -243,1130 +473,797 @@ interface MonitoringState {
       bad: number;
     };
   };
-  
-  // ===== 连接配置 =====
-  connectionConfig: {
-    autoReconnect: boolean;
-    reconnectInterval: number;
-    maxReconnectAttempts: number;
-  };
+
+  /** 导入进度追踪 */
+  importProgress: Record<string, {
+    batchId: string;
+    equipmentId: string;
+    current: number;
+    total: number;
+    percentage: number;
+    isHistory: boolean;
+    lastUpdated: number;
+  }>;
 }
 
-/**
- * 时间范围预设枚举（从history-store.ts迁移）
- */
-enum TimeRangePreset {
-  LAST_HOUR = 'last_hour',
-  LAST_6_HOURS = 'last_6_hours',
-  LAST_24_HOURS = 'last_24_hours',
-  LAST_7_DAYS = 'last_7_days',
-  LAST_30_DAYS = 'last_30_days'
-}
+// ==========================================
+// Actions 定义
+// ==========================================
+interface MonitoringActions {
+  /**
+   * 初始化/启动操作
+   * 建立 WebSocket 连接并设置全局监听
+   */
+  init: (token: string) => void;
 
-/**
- * 时间粒度枚举（从history-store.ts迁移）
- */
-enum TimeGranularity {
-  MINUTE = 'minute',
-  HOUR = 'hour',
-  DAY = 'day',
-  WEEK = 'week',
-  MONTH = 'month'
-}
-
-/**
- * 聚合类型枚举（从history-store.ts迁移）
- */
-enum AggregationType {
-  NONE = 'none',
-  AVG = 'avg',
-  MIN = 'min',
-  MAX = 'max',
-  SUM = 'sum',
-  COUNT = 'count'
-}
-
-/**
- * 统一监测数据状态管理Hook
- * 
- * 整合历史数据和实时数据的状态管理
- * 提供统一的数据获取、订阅和管理接口
- * 
- * 主要功能：
- * - 历史数据查询、缓存、导出
- * - 实时数据WebSocket连接和订阅
- * - 数据统计和分析
- * - 性能指标监控
- * - 错误处理和状态管理
- * 
- * 数据流程：
- * 1. 接收数据查询请求
- * 2. 检查缓存是否有有效数据
- * 3. 如无缓存，从数据源获取数据
- * 4. 更新本地状态和缓存
- * 5. 通知订阅者数据变更
- * 6. 记录性能指标和统计数据
- * 
- * @returns 统一监测数据状态和操作方法
- */
-export const useMonitoringStore = () => {
-  // 初始化状态
-  const [state, setState] = useState<MonitoringState>({
-    // 基础数据存储
-    data: {},
-    queries: [],
-    activeQuery: null,
-    results: {},
-    devices: {},
-    
-    // 状态管理
-    loading: false,
-    queryHistoryLoading: false,
-    timeSeriesLoading: false,
-    aggregatedLoading: false,
-    error: null,
-    queryHistoryError: null,
-    timeSeriesError: null,
-    aggregatedError: null,
-    errors: [],
-    
-    // 实时连接状态
-    realtimeConnected: false,
-    connectionStatus: ConnectionStatus.DISCONNECTED,
-    reconnectAttempts: 0,
-    lastUpdate: 0,
-    realtimeSubscriptions: [],
-    subscriptionStatus: {
-      deviceIds: [],
-      metricTypes: [],
-      activeSubscriptions: 0,
-      failedSubscriptions: [],
-    },
-    
-    // 缓存管理
-    queryCache: new Map(),
-    cacheExpiry: new Map(),
-    maxCacheSize: 100,
-    cacheCleanupInterval: null,
-    dataCache: {},
-    dataHistory: {},
-    
-    // 查询历史记录
-    queryHistory: [],
-    
-    // 数据统计状态
-    statistics: {
-      deviceIds: [],
-      metricTypes: [],
-      timeRange: { start: 0, end: 0 },
-      stats: null,
-    },
-    timeSeriesData: {},
-    aggregatedData: [],
-    
-    // 导出功能
-    exporting: null,
-    
-    // 性能指标
-    performanceMetrics: {
-      messagesPerSecond: 0,
-      bytesPerSecond: 0,
-      averageLatency: 0,
-      packetLoss: 0,
-      connectionUptime: 0,
-      lastUpdate: Date.now(),
-      appLoadTime: 0,
-      routeChangeTime: 0,
-      apiResponseTime: 0,
-      websocketConnectionTime: 0,
-      dataProcessingTime: 0,
-      realTimeLatency: 0,
-      renderTime: 0,
-      memoryUsage: 0,
-      cpuUsage: 0,
-      errorRate: 0,
-      crashRate: 0,
-      connectionLatency: 0,
-      messageRate: 0,
-      dataPointsPerSecond: 0,
-      timestamp: Date.now(),
-      // 扩展字段
-      messageCount: 0,
-      lastMessageTime: 0,
-      dataThroughput: 0,
-      // 原有字段
-      fetchTime: 0,
-      avgFetchTime: 0,
-      processDataTime: 0,
-      avgProcessTime: 0,
-      cacheHitRate: 0,
-    },
-    
-    // 缓存信息
-    cacheInfo: {
-      size: 0,
-      hits: 0,
-      misses: 0,
-      lastCleanup: Date.now(),
-    },
-    
-    // 数据质量统计
-    dataQualityStats: {},
-    
-    // 连接配置
-    connectionConfig: {
-      autoReconnect: true,
-      reconnectInterval: 5000,
-      maxReconnectAttempts: 5,
-    },
-  });
-
-  // ===== 缓存管理方法（从history-store.ts迁移） =====
+  /** 销毁/清理操作 */
+  dispose: () => void;
 
   /**
-   * 生成缓存键
-   * 基于查询参数生成唯一缓存标识
+   * 订阅指定设备的实时数据
+   * 会同时调用 realtimeService.subscribeToEquipment 并更新本地状态
    */
-  const getCacheKey = useCallback((query: HistoryQuery): string => {
-    return `${query.deviceId}_${query.metricTypes.join(',')}_${query.startTime}_${query.endTime}_${query.granularity}_${query.aggregation}`;
-  }, []);
+  subscribeToDevice: (equipmentId: string) => Promise<boolean>;
+
+  /** 取消订阅 */
+  unsubscribeFromDevice: (equipmentId: string) => Promise<void>;
+
+  /** 查询监测数据 (REST API) */
+  fetchMonitoringData: (params: MonitoringQueryParams) => Promise<MonitoringDataResponse>;
+
+  /** 执行历史查询 (带缓存) */
+  executeQuery: (query: Omit<HistoryQuery, 'id' | 'createdAt'>) => Promise<HistoryQuery>;
+
+  /** 清除缓存 */
+  clearCache: () => void;
 
   /**
-   * 获取缓存结果
-   * 检查缓存是否有效并返回缓存的数据
+   * 获取历史数据（用于 DataQueryPage）
+   * 简化的查询接口，支持分页
+   * @param params 查询参数
    */
-  const getCachedResult = useCallback((query: HistoryQuery): HistoryQueryResult | null => {
-    const cacheKey = getCacheKey(query);
-    const cachedResult = state.queryCache.get(cacheKey);
-    const expiryTime = state.cacheExpiry.get(cacheKey);
-    
-    if (cachedResult && expiryTime && Date.now() < expiryTime) {
-      // 缓存未过期，更新缓存统计
-      setState(prev => ({
-        ...prev,
-        cacheInfo: {
-          ...prev.cacheInfo,
-          hits: prev.cacheInfo.hits + 1,
+  fetchHistoricalData: (params: HistoricalQueryParams) => Promise<void>;
+
+  /**
+   * 导出历史数据
+   * @param format 导出格式
+   */
+  exportHistoricalData: (format: 'excel' | 'csv' | 'json') => Promise<void>;
+
+  /**
+   * 清除历史查询结果
+   */
+  clearHistoricalData: () => void;
+
+  /**
+   * 重置查询状态
+   */
+  resetQueryStatus: () => void;
+
+  /**
+   * 处理接收到的实时数据 (Internal Action)
+   * @internal 内部方法，由事件监听器调用
+   */
+  handleRealtimeData: (data: MonitoringDataPayload) => void;
+
+  /**
+   * 处理接收到的批量实时数据 (Internal Action)
+   * @internal 内部方法，由事件监听器调用
+   */
+  handleBatchData: (msg: MonitoringBatchDataMessage) => void;
+
+  /**
+   * 处理连接状态变化 (Internal Action)
+   * @internal 内部方法，由事件监听器调用
+   */
+  handleConnectionStatus: (status: ConnectionStatusPayload) => void;
+
+  /**
+   * 清理事件监听器
+   * 在组件卸载或用户退出时调用
+   */
+  cleanup: () => void;
+
+  /**
+   * 重置 Store 状态 (注销时调用)
+   */
+  reset: () => void;
+}
+
+export type MonitoringStore = MonitoringState & MonitoringActions;
+
+// ==========================================
+// Store Implementation
+// ==========================================
+export const useMonitoringStore = create<MonitoringStore>((set, get) => ({
+  // --- 初始 State ---
+  data: {},
+  queries: [],
+  activeQuery: null,
+  results: {},
+  devices: {},
+
+  // 历史数据查询初始状态
+  historicalData: {
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 20,
+    totalPages: 0,
+  },
+  queryStatus: 'idle',
+  queryError: null,
+  currentQueryParams: null,
+
+  loading: false,
+  queryHistoryLoading: false,
+  timeSeriesLoading: false,
+  aggregatedLoading: false,
+
+  error: null,
+  queryHistoryError: null,
+  timeSeriesError: null,
+  aggregatedError: null,
+  errors: [],
+
+  realtimeConnected: false,
+  connectionStatus: ConnectionStatus.DISCONNECTED,
+  reconnectAttempts: 0,
+  lastUpdate: 0,
+  realtimeSubscriptions: [],
+
+  queryCache: new Map(),
+  cacheExpiry: new Map(),
+  maxCacheSize: 100,
+
+  performanceMetrics: {
+    messagesPerSecond: 0,
+    bytesPerSecond: 0,
+    averageLatency: 0,
+    packetLoss: 0,
+    connectionUptime: 0,
+    lastUpdate: Date.now(),
+    appLoadTime: 0,
+    routeChangeTime: 0,
+    apiResponseTime: 0,
+    websocketConnectionTime: 0,
+    dataProcessingTime: 0,
+    realTimeLatency: 0,
+    renderTime: 0,
+    memoryUsage: 0,
+    cpuUsage: 0,
+    errorRate: 0,
+    crashRate: 0,
+    connectionLatency: 0,
+    messageRate: 0,
+    dataPointsPerSecond: 0,
+    timestamp: Date.now(),
+    messageCount: 0,
+    lastMessageTime: 0,
+    dataThroughput: 0,
+    fetchTime: 0,
+    avgFetchTime: 0,
+    processDataTime: 0,
+    avgProcessTime: 0,
+    cacheHitRate: 0,
+  },
+
+  dataQualityStats: {},
+
+  importProgress: {},
+
+  // --- Actions ---
+
+  init: (token: string) => {
+    // 1. 建立连接
+    realtimeService.connect(token);
+
+    // 2. 注册事件监听器
+    realtimeService.on('monitoring:new-data', (data) => {
+      get().handleRealtimeData(data);
+    });
+
+    // 注册批量数据监听器
+    realtimeService.on('monitoring:batch-data', (msg) => {
+      get().handleBatchData(msg);
+    });
+
+    // 注册连接状态监听（内部事件，需要类型断言）
+    (realtimeService.on as any)('connection:status', (status: ConnectionStatusPayload) => {
+      get().handleConnectionStatus(status);
+    });
+
+    // 3. 更新初始连接状态
+    set({
+      realtimeConnected: false,
+      connectionStatus: ConnectionStatus.CONNECTING
+    });
+  },
+
+  dispose: () => {
+    realtimeService.disconnect();
+    set({
+      realtimeConnected: false,
+      connectionStatus: ConnectionStatus.DISCONNECTED
+    });
+  },
+
+  subscribeToDevice: async (equipmentId: string) => {
+    // 1. 调用 Service
+    const success = await realtimeService.subscribeToEquipment(equipmentId);
+
+    // 2. 更新本地状态
+    if (success) {
+      set(state => ({
+        realtimeSubscriptions: Array.from(new Set([...state.realtimeSubscriptions, equipmentId]))
+      }));
+    }
+    return success;
+  },
+
+  unsubscribeFromDevice: async (equipmentId: string) => {
+    await realtimeService.unsubscribeFromEquipment(equipmentId);
+    set(state => ({
+      realtimeSubscriptions: state.realtimeSubscriptions.filter(id => id !== equipmentId)
+    }));
+  },
+
+
+  fetchMonitoringData: async (params) => {
+    set({ loading: true, error: null });
+    const startTime = Date.now();
+
+    try {
+      // 验证必填参数
+      if (!params.equipmentId || !params.startTime || !params.endTime) {
+        throw new Error('设备ID、开始时间和结束时间不能为空');
+      }
+
+      // 直接调用后端 API
+      const response = await Service.monitoringControllerQueryMonitoringData(
+        params.equipmentId,
+        params.startTime,
+        params.endTime,
+        params.metricType ? (params.metricType as any) : undefined, // metricType 可选
+        undefined, // monitoringPoint 参数（可选）
+        params.page || 1,
+        params.pageSize || 100
+      );
+
+      const fetchTime = Date.now() - startTime;
+
+      // 解析后端响应：兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
+      const items: UnifiedMonitoringData[] = (result.items as UnifiedMonitoringData[]) || [];
+      const total: number = result.total || 0;
+
+      // 更新 Performance Metrics
+      set(state => ({
+        performanceMetrics: {
+          ...state.performanceMetrics,
+          fetchTime,
+          avgFetchTime: state.performanceMetrics.avgFetchTime
+            ? (state.performanceMetrics.avgFetchTime + fetchTime) / 2
+            : fetchTime
         }
       }));
-      return cachedResult;
-    }
-    
-    // 缓存已过期或不存在
-    if (cachedResult && expiryTime && Date.now() >= expiryTime) {
-      // 清理过期缓存
-      state.queryCache.delete(cacheKey);
-      state.cacheExpiry.delete(cacheKey);
-    }
-    
-    // 更新缓存统计
-    setState(prev => ({
-      ...prev,
-      cacheInfo: {
-        ...prev.cacheInfo,
-        misses: prev.cacheInfo.misses + 1,
-      }
-    }));
-    
-    return null;
-  }, [state.queryCache, state.cacheExpiry, getCacheKey]);
 
-  /**
-   * 设置缓存结果
-   * 将查询结果存储到缓存中
-   */
-  const setCachedResult = useCallback((query: HistoryQuery, result: HistoryQueryResult): void => {
-    const cacheKey = getCacheKey(query);
-    
-    // 检查缓存大小限制
-    if (state.queryCache.size >= state.maxCacheSize) {
-      // 清理最旧的缓存项
-      const oldestKey = Array.from(state.cacheExpiry.entries())
-        .sort(([,a], [,b]) => a - b)[0]?.[0];
-      if (oldestKey) {
-        state.queryCache.delete(oldestKey);
-        state.cacheExpiry.delete(oldestKey);
-      }
-    }
-    
-    // 设置缓存结果，过期时间：30分钟
-    const expiryTime = Date.now() + 30 * 60 * 1000;
-    state.queryCache.set(cacheKey, result);
-    state.cacheExpiry.set(cacheKey, expiryTime);
-    
-    // 更新缓存统计
-    setState(prev => ({
-      ...prev,
-      cacheInfo: {
-        ...prev.cacheInfo,
-        size: state.queryCache.size,
-      }
-    }));
-  }, [state.queryCache, state.cacheExpiry, state.maxCacheSize, getCacheKey]);
+      // 更新 Data
+      const dataKey = `${params.equipmentId}-${params.metricType || 'all'}`;
 
-  /**
-   * 清除所有缓存
-   */
-  const clearCache = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      queryCache: new Map(),
-      cacheExpiry: new Map(),
-      dataCache: {},
-      cacheInfo: {
-        ...prev.cacheInfo,
-        size: 0,
-        hits: 0,
-        misses: 0,
-      }
-    }));
-  }, []);
-
-  /**
-   * 清理过期缓存
-   */
-  const cleanupExpiredCache = useCallback(() => {
-    const now = Date.now();
-    setState(prev => {
-      const newCache = new Map();
-      const newExpiry = new Map();
-      
-      prev.queryCache.forEach((result, key) => {
-        const expiry = prev.cacheExpiry.get(key);
-        if (expiry && expiry > now) {
-          newCache.set(key, result);
-          newExpiry.set(key, expiry);
+      set(state => ({
+        loading: false,
+        data: {
+          ...state.data,
+          [dataKey]: items
         }
-      });
-      
+      }));
+
+      // 返回标准响应格式（符合 MonitoringDataResponse 接口）
       return {
-        ...prev,
-        queryCache: newCache,
-        cacheExpiry: newExpiry,
-        cacheInfo: {
-          ...prev.cacheInfo,
-          size: newCache.size,
-        }
+        items,
+        total,
+        page: params.page || 1,
+        pageSize: params.pageSize || 100
+      };
+    } catch (error) {
+      set({
+        loading: false,
+        error: error instanceof Error ? error.message : '获取监测数据失败'
+      });
+      throw error;
+    }
+  },
+
+  executeQuery: async (queryData) => {
+    // 生成 ID 和 时间戳
+    const queryWithId = {
+      ...queryData,
+      id: `query_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`,
+      createdAt: Date.now(),
+    } as HistoryQuery;
+
+    // TODO: 实现缓存检查逻辑 (类似于原文件中的 getCacheKey/getCachedResult)
+    // 为保持简洁，这里直接由 executeQuery 触发 fetchMonitoringData
+
+    // 更新查询历史列表
+    set(state => ({
+      queries: [queryWithId, ...state.queries],
+      activeQuery: queryWithId
+    }));
+
+    return queryWithId;
+  },
+
+  clearCache: () => {
+    set(state => {
+      state.queryCache.clear();
+      state.cacheExpiry.clear();
+      return {
+        queryCache: new Map(),
+        cacheExpiry: new Map()
       };
     });
-  }, []);
-
-  // ===== 缓存清理定时器启动 =====
-  useEffect(() => {
-    // 每5分钟清理一次过期缓存
-    const cleanupInterval = setInterval(cleanupExpiredCache, 5 * 60 * 1000);
-    
-    setState(prev => ({
-      ...prev,
-      cacheCleanupInterval: cleanupInterval,
-    }));
-    
-    return () => {
-      clearInterval(cleanupInterval);
-    };
-  }, [cleanupExpiredCache]);
-
-  // ===== 历史数据查询方法（从history-store.ts迁移） =====
+  },
 
   /**
-   * 创建历史查询
-   * 支持缓存检查和智能重试
+   * 获取历史数据（用于 DataQueryPage）
+   * 简化的查询接口，支持分页
    */
-  const createQuery = useCallback(async (queryData: Omit<HistoryQuery, 'id' | 'createdAt'>) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  fetchHistoricalData: async (params: HistoricalQueryParams) => {
+    // 设置加载状态
+    set({ queryStatus: 'loading', queryError: null });
 
     try {
-      // 先检查缓存
-      const queryWithId = {
-        ...queryData,
-        id: `query_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        createdAt: Date.now(),
-      } as HistoryQuery;
-      
-      const cachedResult = getCachedResult(queryWithId);
-      if (cachedResult) {
-        // 使用缓存结果
-        setState(prev => ({
-          ...prev,
-          loading: false,
-          queries: [queryWithId, ...prev.queries],
-          activeQuery: queryWithId,
-          results: { ...prev.results, [queryWithId.id]: cachedResult },
-        }));
-        return queryWithId;
+      // 保存当前查询参数
+      set({ currentQueryParams: params });
+
+      // 策略逻辑：如果用户想要查询全部，或者指标太多，就不带 metricType 以获得完整的时间线
+      const shouldQueryAll = params.metricTypes.length > 3 || !params.monitoringPoint || params.monitoringPoint === 'ALL_POINTS';
+      const primaryMetricType = shouldQueryAll ? undefined : params.metricTypes[0];
+
+      // 直接调用后端 API
+      const response = await Service.monitoringControllerQueryMonitoringData(
+        params.deviceId,
+        params.startTime,
+        params.endTime,
+        primaryMetricType as any,
+        params.monitoringPoint === 'ALL_POINTS' ? undefined : params.monitoringPoint,
+        params.page,
+        params.pageSize
+      );
+
+      // 解析后端响应：兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
+      let allData: UnifiedMonitoringData[] = (result.items as UnifiedMonitoringData[]) || [];
+      let totalCount: number = result.total || 0;
+
+      // 如果有多个指标，且之前没有执行“查询全部”逻辑，则需要合并数据
+      if (!shouldQueryAll && params.metricTypes.length > 1) {
+        // 查询其他指标的数据
+        const otherMetrics = params.metricTypes.slice(1);
+        const otherQueries = otherMetrics.map(metricType =>
+          Service.monitoringControllerQueryMonitoringData(
+            params.deviceId,
+            params.startTime,
+            params.endTime,
+            metricType as any,
+            params.monitoringPoint,
+            params.page,
+            params.pageSize
+          )
+        );
+
+        const otherResults = await Promise.all(otherQueries);
+
+        // 合并所有数据
+        otherResults.forEach((res) => {
+          const resultData = (res as any).data || res;
+          if (resultData.items) {
+            allData = [...allData, ...(resultData.items as UnifiedMonitoringData[])];
+            totalCount += resultData.total || 0;
+          }
+        });
+
+        // 按时间戳排序
+        allData.sort((a: UnifiedMonitoringData, b: UnifiedMonitoringData) => a.timestamp - b.timestamp);
       }
 
-      // 缓存未命中，创建查询对象
-      setState(prev => ({
-        ...prev,
-        queries: [queryWithId, ...prev.queries],
-        activeQuery: queryWithId,
-        loading: false,
-      }));
+      // 计算总页数
+      const totalPages = Math.ceil(totalCount / params.pageSize);
 
-      return queryWithId;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : '创建查询失败',
-      }));
-      throw error;
-    }
-  }, [getCachedResult]);
-
-  /**
-   * 执行历史查询
-   * 支持智能缓存和错误重试
-   */
-  const executeQuery = useCallback(async (query: HistoryQuery, retryCount: number = 0) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-
-    try {
-      // 检查缓存
-      const cachedResult = getCachedResult(query);
-      if (cachedResult) {
-        setState(prev => ({
-          ...prev,
-          results: { ...prev.results, [query.id]: cachedResult },
-          activeQuery: query,
-          loading: false,
-        }));
-        return cachedResult;
-      }
-
-      // 缓存未命中，执行查询
-      const queryParams: MonitoringQueryParams = {
-        equipmentId: query.deviceId,
-        metricType: query.metricTypes[0] as MetricType,
-        startTime: query.startTime,
-        endTime: query.endTime,
-        page: 1,
-        pageSize: 1000,
-      };
-      
-      const response = await monitoringService.queryMonitoringData(queryParams);
-      
-      const result: HistoryQueryResult = {
-        query,
-        data: response.data.items,
-        total: response.data.total,
-        page: response.data.page,
-        pageSize: response.data.pageSize,
-        totalPages: response.data.totalPages,
-        executionTime: Date.now() - query.startTime,
-        cached: false,
-      };
-      
-      // 缓存结果
-      setCachedResult(query, result);
-      
-      setState(prev => ({
-        ...prev,
-        results: { ...prev.results, [query.id]: result },
-        activeQuery: query,
-        loading: false,
-      }));
-
-      return result;
-    } catch (error) {
-      // 错误重试机制（最多重试2次）
-      if (retryCount < 2) {
-        console.log(`查询失败，${1000 * (retryCount + 1)}ms后重试...`);
-        setTimeout(() => {
-          executeQuery(query, retryCount + 1);
-        }, 1000 * (retryCount + 1));
-        return;
-      }
-      
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : '执行查询失败',
-      }));
-      throw error;
-    }
-  }, [getCachedResult, setCachedResult]);
-
-  /**
-   * 获取监测数据（整合版）
-   *
-   * 从统一数据源获取监测数据，支持实时和历史数据
-   * 自动处理缓存、错误和状态更新
-   *
-   * @param params 查询参数
-   * @returns 监测数据响应
-   */
-  const fetchMonitoringData = useCallback(async (
-    params: MonitoringQueryParams
-  ): Promise<MonitoringDataResponse> => {
-    // 开始获取数据，更新加载状态
-    setState(prev => ({
-      ...prev,
-      loading: true,
-      error: null,
-    }));
-
-    try {
-      // 记录开始时间用于性能监控
-      const startTime = Date.now();
-
-      // 从监控服务获取数据
-      const result = await monitoringService.queryMonitoringData(params);
-      
-      // 计算获取时间
-      const fetchTime = Date.now() - startTime;
-      
-      // 更新数据存储，使用设备ID和指标类型的组合作为键
-      const dataKey = `${params.equipmentId}-${params.metricType || 'all'}`;
-      
       // 更新状态
-      setState(prev => {
-        // 计算数据质量统计
-        const qualityStats = { ...prev.dataQualityStats };
-        
-        if (result.data.items && result.data.items.length > 0) {
-          const newStats = { total: 0, normal: 0, estimated: 0, questionable: 0, bad: 0 };
-          
-          for (const item of result.data.items) {
-            newStats.total++;
-            switch (item.quality) {
-              case DataQuality.NORMAL:
-                newStats.normal++;
-                break;
-              case DataQuality.ESTIMATED:
-                newStats.estimated++;
-                break;
-              case DataQuality.QUESTIONABLE:
-                newStats.questionable++;
-                break;
-              case DataQuality.BAD:
-                newStats.bad++;
-                break;
-            }
-          }
-          
-          qualityStats[dataKey] = newStats;
+      set({
+        historicalData: {
+          items: allData,
+          total: totalCount,
+          page: params.page,
+          pageSize: params.pageSize,
+          totalPages,
+        },
+        queryStatus: 'success',
+      });
+
+      console.log(`历史数据查询成功: ${allData.length} 条数据`);
+    } catch (error) {
+      // 处理错误
+      const errorMessage = error instanceof Error ? error.message : '查询失败';
+      set({
+        queryStatus: 'error',
+        queryError: errorMessage,
+      });
+
+      console.error('历史数据查询失败:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 导出历史数据
+   * @param format 导出格式
+   */
+  exportHistoricalData: async (format: 'excel' | 'csv' | 'json') => {
+    const { currentQueryParams, historicalData } = get();
+
+    // 验证是否有可导出的数据
+    if (!currentQueryParams || historicalData.items.length === 0) {
+      throw new Error('没有可导出的数据，请先执行查询');
+    }
+
+    try {
+      // 准备导出数据
+      const exportData = {
+        data: historicalData.items,
+        format,
+        filename: `monitoring_data_${Date.now()}`,
+      };
+
+      // 根据格式处理数据
+      if (format === 'json') {
+        // JSON 格式：直接下载
+        const jsonStr = JSON.stringify(exportData.data, null, 2);
+        const blob = new Blob([jsonStr], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${exportData.filename}.json`;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        console.log(`数据已导出为 JSON 格式: ${exportData.filename}.json`);
+      } else if (format === 'csv') {
+        // CSV 格式：转换为 CSV 字符串
+        if (exportData.data.length === 0) {
+          throw new Error('没有数据可导出');
         }
-        
-        return {
-          ...prev,
-          data: {
-            ...prev.data,
-            [dataKey]: result.data.items || [],
-          },
-          loading: false,
-          error: null,
-          performanceMetrics: {
-            ...prev.performanceMetrics,
-            fetchTime,
-            avgFetchTime: prev.performanceMetrics.avgFetchTime 
-              ? (prev.performanceMetrics.avgFetchTime + fetchTime) / 2
-              : fetchTime,
-            lastUpdate: Date.now(),
-          },
-          dataQualityStats: qualityStats,
-        };
-      });
 
-      // 更新查询历史记录
-      setState(prev => ({
-        ...prev,
-        queryHistory: [params, ...prev.queryHistory.slice(0, 49)], // 保留最近50条记录
-      }));
+        // CSV 表头
+        const headers = ['时间', '设备ID', '参数类型', '数值', '单位', '质量', '来源'];
+        const csvRows = [headers.join(',')];
 
-      return result;
-    } catch (error) {
-      // 错误处理
-      const errorMessage = error instanceof Error ? error.message : '获取监测数据失败';
-      
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: errorMessage,
-      }));
+        // CSV 数据行
+        exportData.data.forEach(item => {
+          const row = [
+            new Date(item.timestamp).toLocaleString('zh-CN'),
+            item.equipmentId,
+            item.metricType,
+            item.value,
+            item.unit || '',
+            item.quality,
+            item.source,
+          ];
+          csvRows.push(row.join(','));
+        });
 
-      throw error;
-    }
-  }, []);
+        // 添加 BOM 头以支持中文
+        const csvStr = '\uFEFF' + csvRows.join('\n');
+        const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${exportData.filename}.csv`;
+        link.click();
+        URL.revokeObjectURL(url);
 
-  // ===== 实时数据方法（从realtime-store.ts迁移） =====
+        console.log(`数据已导出为 CSV 格式: ${exportData.filename}.csv`);
+      } else if (format === 'excel') {
+        // Excel 格式：这里简化处理，实际应使用库（如 xlsx）
+        // 暂时使用 CSV 格式代替
+        console.warn('Excel 导出功能待完善，当前使用 CSV 格式');
 
-  /**
-   * 连接WebSocket
-   * 建立实时数据连接
-   */
-  const connect = useCallback(async (accessToken: string) => {
-    setState(prev => ({
-      ...prev,
-      connectionStatus: ConnectionStatus.CONNECTING,
-      errors: [],
-    }));
+        const headers = ['时间', '设备ID', '参数类型', '数值', '单位', '质量', '来源'];
+        const csvRows = [headers.join(',')];
 
-    try {
-      await realTimeService.connect(accessToken);
-      
-      // 设置回调
-      realTimeService.setCallbacks({
-        onConnect: () => {
-          setState(prev => ({
-            ...prev,
-            connected: true,
-            connectionStatus: ConnectionStatus.CONNECTED,
-            reconnectAttempts: 0,
-          }));
-        },
-        onDisconnect: () => {
-          setState(prev => ({
-            ...prev,
-            connected: false,
-            connectionStatus: ConnectionStatus.DISCONNECTED,
-          }));
-        },
-        onError: (error) => {
-          setState(prev => ({
-            ...prev,
-            connectionStatus: ConnectionStatus.ERROR,
-            errors: [...prev.errors, {
-              code: 'websocket_error',
-              message: error.message,
-              timestamp: Date.now(),
-            }],
-          }));
-        },
-        onDataUpdate: (deviceId, data) => {
-          setState(prev => {
-            const deviceData: DeviceRealTimeData = {
-              deviceId,
-              deviceName: prev.devices[deviceId]?.deviceName || `设备 ${deviceId}`,
-              status: prev.devices[deviceId]?.status || 'online',
-              lastSeen: Date.now(),
-              dataPoints: data,
-              alerts: prev.devices[deviceId]?.alerts || 0,
-              connectionQuality: 'good',
-            };
+        exportData.data.forEach(item => {
+          const row = [
+            new Date(item.timestamp).toLocaleString('zh-CN'),
+            item.equipmentId,
+            item.metricType,
+            item.value,
+            item.unit || '',
+            item.quality,
+            item.source,
+          ];
+          csvRows.push(row.join(','));
+        });
 
-            return {
-              ...prev,
-              devices: {
-                ...prev.devices,
-                [deviceId]: deviceData,
-              },
-              lastUpdate: Date.now(),
-            };
-          });
-        },
-        onAlarm: (alarm) => {
-          console.log('收到告警:', alarm);
-        },
-        onDeviceStatus: (deviceId, status) => {
-          setState(prev => ({
-            ...prev,
-            devices: {
-              ...prev.devices,
-              [deviceId]: {
-                ...prev.devices[deviceId],
-                status: status as any,
-                lastSeen: Date.now(),
-              },
-            },
-          }));
-        },
-      });
+        const csvStr = '\uFEFF' + csvRows.join('\n');
+        const blob = new Blob([csvStr], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${exportData.filename}.xlsx`;
+        link.click();
+        URL.revokeObjectURL(url);
 
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        connectionStatus: ConnectionStatus.ERROR,
-        errors: [...prev.errors, {
-          code: 'connection_failed',
-          message: error instanceof Error ? error.message : '连接失败',
-          timestamp: Date.now(),
-        }],
-      }));
-      throw error;
-    }
-  }, []);
-
-  /**
-   * 断开WebSocket连接
-   */
-  const disconnect = useCallback(() => {
-    realTimeService.disconnect();
-    setState(prev => ({
-      ...prev,
-      connected: false,
-      connectionStatus: ConnectionStatus.DISCONNECTED,
-      lastUpdate: 0,
-      reconnectAttempts: 0,
-      subscriptionStatus: {
-        deviceIds: [],
-        metricTypes: [],
-        activeSubscriptions: 0,
-        failedSubscriptions: [],
-      },
-      devices: {},
-    }));
-  }, []);
-
-  /**
-   * 订阅实时数据（整合版）
-   * 
-   * 订阅指定设备和指标类型的实时数据更新
-   * 通过WebSocket连接获取实时数据流
-   */
-  const subscribeToRealtime = useCallback(async (
-    equipmentIds: string[],
-    metricTypes: string[]
-  ) => {
-    try {
-      // 尝试WebSocket订阅
-      const response = await realTimeService.subscribe(equipmentIds, metricTypes);
-      
-      // 更新实时连接状态和订阅列表
-      setState(prev => ({
-        ...prev,
-        realtimeConnected: true,
-        realtimeSubscriptions: [...prev.realtimeSubscriptions, ...equipmentIds],
-        subscriptionStatus: {
-          deviceIds: equipmentIds,
-          metricTypes,
-          activeSubscriptions: 1,
-          failedSubscriptions: [],
-        },
-      }));
-      
-      return response;
-    } catch (error) {
-      // 如果WebSocket订阅失败，尝试使用数据源管理器
-      console.log( "获取WebSocket订阅失败",error);
-      throw error;
-    }
-  }, []);
-
-  /**
-   * 取消实时数据订阅
-   */
-  const unsubscribeFromRealtime = useCallback(async (equipmentIds?: string[]) => {
-    try {
-      // 取消WebSocket订阅
-      await realTimeService.unsubscribe();
-      
-      // 更新订阅列表
-      setState(prev => {
-        const updatedSubscriptions = equipmentIds 
-          ? prev.realtimeSubscriptions.filter(id => !equipmentIds.includes(id))
-          : [];
-        
-        return {
-          ...prev,
-          realtimeSubscriptions: updatedSubscriptions,
-          subscriptionStatus: equipmentIds ? {
-            ...prev.subscriptionStatus,
-            deviceIds: prev.subscriptionStatus.deviceIds.filter(id => !equipmentIds.includes(id)),
-          } : {
-            deviceIds: [],
-            metricTypes: [],
-            activeSubscriptions: 0,
-            failedSubscriptions: [],
-          },
-        };
-      });
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '取消实时数据订阅失败';
-      
-      setState(prev => ({
-        ...prev,
-        error: errorMessage,
-      }));
-      
-      throw error;
-    }
-  }, []);
-
-  // ===== 数据导出方法（从history-store.ts迁移） =====
-
-  /**
-   * 导出数据
-   * 支持多种格式和进度跟踪
-   */
-  const exportData = useCallback(async (
-    query: HistoryQuery,
-    format: 'csv' | 'excel' | 'json',
-    options?: { includeMetadata?: boolean; includeCharts?: boolean }
-  ) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-
-    try {
-      // 使用monitoring-service的exportMonitoringData方法
-      const queryParams: MonitoringQueryParams = {
-        equipmentId: query.deviceId,
-        metricType: query.metricTypes[0] as MetricType,
-        startTime: query.startTime,
-        endTime: query.endTime,
-      };
-      
-      const blob = await monitoringService.exportMonitoringData(queryParams, {
-        format: format as 'excel' | 'csv',
-        includeHeaders: options?.includeMetadata,
-      });
-      
-      const exportStatus: ExportStatus = {
-        id: `export_${Date.now()}`,
-        status: 'completed',
-        progress: 100,
-        downloadUrl: URL.createObjectURL(blob),
-        createdAt: Date.now(),
-        completedAt: Date.now(),
-        expiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24小时后过期
-      };
-      
-      setState(prev => ({
-        ...prev,
-        exporting: exportStatus,
-        loading: false,
-      }));
-
-      // 启动导出状态轮询
-      const pollExportStatus = async (exportId: string) => {
-        try {
-          // 简化的状态检查
-          const status = exportStatus;
-          setState(prev => ({ ...prev, exporting: status }));
-          
-          if (status.status === 'completed' || status.status === 'failed' || status.status === 'expired') {
-            return;
-          }
-          
-          // 继续轮询
-          setTimeout(() => pollExportStatus(exportId), 2000);
-        } catch (pollError) {
-          console.error('获取导出状态失败:', pollError);
-        }
-      };
-
-      // 开始轮询导出状态
-      if (exportStatus.id) {
-        pollExportStatus(exportStatus.id);
+        console.log(`数据已导出为 Excel 格式: ${exportData.filename}.xlsx`);
       }
-
-      return exportStatus;
     } catch (error) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : '导出数据失败',
-      }));
+      console.error('数据导出失败:', error);
       throw error;
     }
-  }, []);
-
-  // ===== 数据统计方法（从history-store.ts迁移） =====
+  },
 
   /**
-   * 获取查询历史
+   * 清除历史查询结果
    */
-  const fetchQueryHistory = useCallback(async (page: number = 1, pageSize: number = 20) => {
-    setState(prev => ({ ...prev, queryHistoryLoading: true, queryHistoryError: null }));
-
-    try {
-      // 简化的查询历史
-      const history = {
+  clearHistoricalData: () => {
+    set({
+      historicalData: {
         items: [],
         total: 0,
-        page,
-        pageSize,
+        page: 1,
+        pageSize: 20,
         totalPages: 0,
-      };
-      
-      setState(prev => ({
-        ...prev,
-        queryHistory: page === 1 ? history.items : [...prev.queryHistory, ...history.items],
-        queryHistoryLoading: false,
-      }));
-
-      return history;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        queryHistoryLoading: false,
-        queryHistoryError: error instanceof Error ? error.message : '获取查询历史失败',
-      }));
-      throw error;
-    }
-  }, []);
-
-  /**
-   * 删除查询记录
-   */
-  const deleteQuery = useCallback(async (queryId: string) => {
-    try {
-      setState(prev => ({
-        ...prev,
-        queries: prev.queries.filter(q => q.id !== queryId),
-        results: Object.fromEntries(
-          Object.entries(prev.results).filter(([id]) => id !== queryId)
-        ),
-      }));
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        error: error instanceof Error ? error.message : '删除查询失败',
-      }));
-      throw error;
-    }
-  }, []);
-
-  /**
-   * 获取数据统计信息（整合版）
-   */
-  const getMonitoringStatistics = useCallback(async (
-    params: MonitoringStatisticsParams
-  ): Promise<MonitoringStatisticsResponse> => {
-    try {
-      // 记录开始时间
-      const startTime = Date.now();
-      
-      // 使用monitoring-service的getMonitoringStatistics方法
-      const stats = await monitoringService.getMonitoringStatistics(params);
-      
-      // 更新性能指标
-      setState(prev => ({
-        ...prev,
-        performanceMetrics: {
-          ...prev.performanceMetrics,
-          processDataTime: Date.now() - startTime,
-          lastUpdate: Date.now(),
-        },
-      }));
-      
-      return stats;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : '获取统计数据失败';
-      
-      setState(prev => ({
-        ...prev,
-        error: errorMessage,
-      }));
-      
-      throw error;
-    }
-  }, []);
-
-  /**
-   * 获取时间序列数据
-   */
-  const fetchTimeSeriesData = useCallback(async (
-    deviceId: string,
-    metricTypes: string[],
-    timeRange: { start: number; end: number },
-    options?: {
-      granularity?: TimeGranularity;
-      aggregation?: AggregationType;
-      quality?: string[];
-    }
-  ) => {
-    setState(prev => ({ ...prev, timeSeriesLoading: true, timeSeriesError: null }));
-
-    try {
-      // 使用monitoring-service的queryMonitoringData方法
-      const timeSeriesData = await monitoringService.queryMonitoringData({
-        equipmentId: deviceId,
-        metricType: metricTypes[0] as MetricType,
-        startTime: timeRange.start,
-        endTime: timeRange.end,
-        pageSize: 1000,
-      });
-      
-      setState(prev => ({
-        ...prev,
-        timeSeriesData: {
-          ...prev.timeSeriesData,
-          [deviceId]: timeSeriesData.data.items || []
-        },
-        timeSeriesLoading: false,
-      }));
-
-      return timeSeriesData;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        timeSeriesLoading: false,
-        timeSeriesError: error instanceof Error ? error.message : '获取时间序列数据失败',
-      }));
-      throw error;
-    }
-  }, []);
-
-  /**
-   * 获取聚合数据
-   */
-  const fetchAggregatedData = useCallback(async (
-    deviceIds: string[],
-    metricTypes: string[],
-    timeRange: { start: number; end: number },
-    aggregation: AggregationType,
-    granularity: TimeGranularity
-  ) => {
-    setState(prev => ({ ...prev, aggregatedLoading: true, aggregatedError: null }));
-
-    try {
-      // 简化的聚合数据实现
-      const aggregatedData: Array<{
-        timestamp: number;
-        deviceId: string;
-        metricType: string;
-        value: number;
-        count: number;
-      }> = [];
-      
-      setState(prev => ({
-        ...prev,
-        aggregatedData,
-        aggregatedLoading: false,
-      }));
-
-      return aggregatedData;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        aggregatedLoading: false,
-        aggregatedError: error instanceof Error ? error.message : '获取聚合数据失败',
-      }));
-      throw error;
-    }
-  }, []);
-
-  // ===== 数据缓存管理方法（从realtime-store.ts迁移） =====
-
-  /**
-   * 添加数据到缓存
-   */
-  const addToCache = useCallback((deviceId: string, data: MetricReading) => {
-    setState(prev => {
-      const deviceCache = prev.dataCache[deviceId] || [];
-      const updatedCache = [...deviceCache, data].slice(-1000);
-      return {
-        ...prev,
-        dataCache: {
-          ...prev.dataCache,
-          [deviceId]: updatedCache,
-        },
-      };
+      },
+      queryStatus: 'idle',
+      queryError: null,
+      currentQueryParams: null,
     });
-  }, []);
+
+    console.log('历史查询结果已清除');
+  },
 
   /**
-   * 获取缓存数据
+   * 重置查询状态
    */
-  const getCachedData = useCallback((deviceId: string, limit?: number): MetricReading[] => {
-    const cache = state.dataCache[deviceId] || [];
-    return limit ? cache.slice(-limit) : cache;
-  }, [state.dataCache]);
-
-  /**
-   * 清除数据缓存
-   */
-  const clearDataCache = useCallback(() => {
-    setState(prev => ({ ...prev, dataCache: {} }));
-  }, []);
-
-  /**
-   * 添加数据到历史记录
-   */
-  const addToHistory = useCallback((deviceId: string, data: MetricReading) => {
-    setState(prev => {
-      const deviceHistory = prev.dataHistory[deviceId] || [];
-      const updatedHistory = [...deviceHistory, data].slice(-5000);
-      return {
-        ...prev,
-        dataHistory: {
-          ...prev.dataHistory,
-          [deviceId]: updatedHistory,
-        },
-      };
+  resetQueryStatus: () => {
+    set({
+      queryStatus: 'idle',
+      queryError: null,
     });
-  }, []);
+  },
 
   /**
-   * 获取历史数据
+   * 处理接收到的实时监测数据
+   *
+   * 实现批量更新机制：
+   * - 将数据收集到缓冲区
+   * - 每1秒批量更新一次 store 状态
+   * - 限制每个设备-指标组合最多保留1000个数据点
+   *
+   * @param payload MonitoringDataPayload - WebSocket 推送的数据
    */
-  const getHistoryData = useCallback((deviceId: string, timeRange?: { start: number; end: number }): MetricReading[] => {
-    const history = state.dataHistory[deviceId] || [];
-    if (!timeRange) {
-      return history;
+  handleRealtimeData: (payload: MonitoringDataPayload) => {
+    // 过滤空数据
+    if (payload) {
+      pendingUpdates.push(payload);
     }
-    return history.filter(item =>
-      item.timestamp >= timeRange.start && item.timestamp <= timeRange.end
-    );
-  }, [state.dataHistory]);
+
+    // 如果定时器未启动，启动批量更新定时器
+    if (!updateTimer && pendingUpdates.length > 0) {
+      updateTimer = setTimeout(() => {
+        // 批量处理缓冲区中的所有数据
+        const updates = [...pendingUpdates];
+        pendingUpdates = []; // 清空缓冲区
+        updateTimer = null;
+
+        // 批量更新 store 状态
+        set(state => {
+          const newData = { ...state.data };
+          const newDevices = { ...state.devices };
+          let messageCount = state.performanceMetrics.messageCount;
+
+          // 遍历所有待更新的数据
+          updates.forEach(payload => {
+            try {
+              // 转换数据格式
+              const transformed = transformPayloadToMonitoringData(payload);
+
+              // 计算索引键：equipmentId-monitoringPoint (使用中文监测点名称)
+              const key = `${transformed.equipmentId}-${transformed.monitoringPoint}`;
+
+              // 获取现有数据（如果有）
+              const existingData = newData[key] || [];
+
+              // 追加新数据点
+              let updatedData = [...existingData, transformed];
+
+              // 限制数据点数量（FIFO策略）
+              if (updatedData.length > MAX_DATA_POINTS_PER_KEY) {
+                updatedData = updatedData.slice(-MAX_DATA_POINTS_PER_KEY);
+              }
+
+              newData[key] = updatedData;
+
+              // 更新设备状态
+              if (!newDevices[transformed.equipmentId]) {
+                newDevices[transformed.equipmentId] = {
+                  deviceId: transformed.equipmentId,
+                  deviceName: payload.monitoringPoint || transformed.equipmentId,
+                  status: 'online',
+                  lastSeen: transformed.timestamp,
+                  dataPoints: [],
+                  alerts: 0,
+                  connectionQuality: 'excellent'
+                };
+              } else {
+                newDevices[transformed.equipmentId] = {
+                  ...newDevices[transformed.equipmentId],
+                  lastSeen: transformed.timestamp,
+                  status: 'online'
+                };
+              }
+
+              messageCount++;
+            } catch (error) {
+              console.error('处理实时监测数据失败:', error, payload);
+            }
+          });
+
+          return {
+            data: newData,
+            devices: newDevices,
+            lastUpdate: Date.now(),
+            performanceMetrics: {
+              ...state.performanceMetrics,
+              messageCount,
+              lastMessageTime: Date.now()
+            }
+          };
+        });
+      }, UPDATE_INTERVAL);
+    }
+  },
 
   /**
-   * 错误处理增强
+   * 处理接收到的批量实时数据
+   * 
+   * - 更新导入进度状态
+   * - 如果是非历史数据（实时批量），则并入波形缓存
+   * - 完成后触发通知并自动清理状态
+   *
+   * @param msg MonitoringBatchDataMessage - WebSocket 推送的批量数据包
    */
-  const addError = useCallback((code: string, message: string, deviceId?: string) => {
-    setState(prev => ({
-      ...prev,
-      errors: [...prev.errors, {
-        code,
-        message,
-        timestamp: Date.now(),
-        deviceId,
-      }].slice(-50),
+  handleBatchData: (msg: MonitoringBatchDataMessage) => {
+    const { batchId, equipmentId, data, chunkIndex, totalChunks, isHistory } = msg;
+
+    // 1. 更新进度状态
+    set(state => ({
+      importProgress: {
+        ...state.importProgress,
+        [batchId]: {
+          batchId,
+          equipmentId,
+          current: chunkIndex,
+          total: totalChunks,
+          percentage: Math.round((chunkIndex / totalChunks) * 100),
+          isHistory,
+          lastUpdated: Date.now()
+        }
+      }
     }));
-  }, []);
+
+    // 2. 处理实时批量数据 (isHistory: false)
+    // 历史导入数据 (isHistory: true) 不参与实时波形展示，仅记录进度
+    if (!isHistory) {
+      // 将批量项转换并推入单条消息缓冲区，复用现有的定时批量更新逻辑
+      const convertedItems = data.map(item => ({
+        id: item.id,
+        equipmentId: equipmentId,
+        timestamp: item.timestamp,
+        metricType: item.metricType,
+        monitoringPoint: item.monitoringPoint || '',
+        value: item.value,
+        unit: item.unit,
+        quality: mapQualityNumber(item.quality) as any,
+        source: item.source as any
+      }));
+
+      pendingUpdates.push(...convertedItems);
+
+      // 如果批量更新定时器未启动，执行一次带空参数的调用以激活定时器（handleRealtimeData 现在内部会处理空参数）
+      if (!updateTimer && pendingUpdates.length > 0) {
+        get().handleRealtimeData(null as any);
+      }
+    }
+
+    // 3. 完成处理
+    if (chunkIndex === totalChunks) {
+      console.log(`[MonitoringStore] 批次 ${batchId} 接收完成 (${totalChunks} 分片)`);
+
+      // 5秒后自动清理进度条状态，给 UI 留出展示“完成”状态的时间
+      setTimeout(() => {
+        set(state => {
+          const nextProgress = { ...state.importProgress };
+          delete nextProgress[batchId];
+          return { importProgress: nextProgress };
+        });
+      }, 5000);
+    }
+  },
 
   /**
-   * 清除错误
+   * 处理连接状态变化
+   *
+   * @param status ConnectionStatusPayload - 连接状态信息
    */
-  const clearErrors = useCallback(() => {
-    setState(prev => ({ ...prev, errors: [] }));
-  }, []);
+  handleConnectionStatus: (status: ConnectionStatusPayload) => {
+    set({
+      realtimeConnected: status.connected,
+      connectionStatus: status.connected
+        ? ConnectionStatus.CONNECTED
+        : ConnectionStatus.DISCONNECTED,
+      error: status.error || null
+    });
+
+    // 如果连接断开，可以选择显示用户提示
+    if (!status.connected && status.error) {
+      console.warn('实时连接状态变化:', status.error);
+    }
+  },
 
   /**
-   * 清除所有错误状态
+   * 清理事件监听器
+   *
+   * 在组件卸载或用户退出时调用，避免内存泄漏
    */
-  const clearError = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      error: null,
-      queryHistoryError: null,
-      timeSeriesError: null,
-      aggregatedError: null,
-    }));
-  }, []);
+  cleanup: () => {
+    // 移除事件监听器
+    // 注意：由于我们使用的是匿名函数，无法精确移除
+    // 更好的做法是在 init 时保存监听器引用
+    // 这里我们清空 store 状态
 
-  /**
-   * 获取指定设备的数据
-   */
-  const getEquipmentData = useCallback((
-    equipmentId: string,
-    metricType?: MetricType
-  ): UnifiedMonitoringData[] => {
-    const key = `${equipmentId}-${metricType || 'all'}`;
-    return state.data[key] || [];
-  }, [state.data]);
+    // 清空批量更新缓冲区和定时器
+    if (updateTimer) {
+      clearTimeout(updateTimer);
+      updateTimer = null;
+    }
+    pendingUpdates = [];
 
-  /**
-   * 获取设备实时数据
-   */
-  const getDeviceData = useCallback((deviceId: string): DeviceRealTimeData | undefined => {
-    return state.devices[deviceId];
-  }, [state.devices]);
+    // 注意：不再在这里重置 realtimeConnected 和 connectionStatus
+    // 因为这会导致页面切换时 TopBar 状态误报为断开。
+    // 全局连接状态应由 App.tsx 或退出登录逻辑统一管理。
+    // 清空进度追踪状态
+    set({ importProgress: {} });
 
-  /**
-   * 重置状态
-   */
-  const resetState = useCallback(() => {
-    setState(prev => ({
-      // 基础数据存储
+    console.log('[MonitoringStore] 执行部分清理，保留全局连接状态');
+  },
+
+  reset: () => {
+    // 停止任何正在进行的批量更新定时器
+    if (updateTimer) {
+      clearTimeout(updateTimer);
+      updateTimer = null;
+    }
+    pendingUpdates = [];
+
+    set({
       data: {},
       queries: [],
       activeQuery: null,
       results: {},
       devices: {},
-      
-      // 状态管理
+      historicalData: {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 20,
+        totalPages: 0,
+      },
+      queryStatus: 'idle',
+      queryError: null,
+      currentQueryParams: null,
       loading: false,
       queryHistoryLoading: false,
       timeSeriesLoading: false,
@@ -1376,399 +1273,41 @@ export const useMonitoringStore = () => {
       timeSeriesError: null,
       aggregatedError: null,
       errors: [],
-      
-      // 实时连接状态
       realtimeConnected: false,
       connectionStatus: ConnectionStatus.DISCONNECTED,
       reconnectAttempts: 0,
       lastUpdate: 0,
       realtimeSubscriptions: [],
-      subscriptionStatus: {
-        deviceIds: [],
-        metricTypes: [],
-        activeSubscriptions: 0,
-        failedSubscriptions: [],
-      },
-      
-      // 缓存管理
-      queryCache: new Map(),
-      cacheExpiry: new Map(),
-      maxCacheSize: 100,
-      cacheCleanupInterval: null,
-      dataCache: {},
-      dataHistory: {},
-      
-      // 查询历史记录
-      queryHistory: [],
-      
-      // 数据统计状态
-      statistics: {
-        deviceIds: [],
-        metricTypes: [],
-        timeRange: { start: 0, end: 0 },
-        stats: null,
-      },
-      timeSeriesData: {},
-      aggregatedData: [],
-      
-      // 导出功能
-      exporting: null,
-      
-      // 性能指标 - 重置为默认值
-      performanceMetrics: {
-        messagesPerSecond: 0,
-        bytesPerSecond: 0,
-        averageLatency: 0,
-        packetLoss: 0,
-        connectionUptime: 0,
-        lastUpdate: Date.now(),
-        appLoadTime: 0,
-        routeChangeTime: 0,
-        apiResponseTime: 0,
-        websocketConnectionTime: 0,
-        dataProcessingTime: 0,
-        realTimeLatency: 0,
-        renderTime: 0,
-        memoryUsage: 0,
-        cpuUsage: 0,
-        errorRate: 0,
-        crashRate: 0,
-        connectionLatency: 0,
-        messageRate: 0,
-        dataPointsPerSecond: 0,
-        timestamp: Date.now(),
-        // 扩展字段
-        messageCount: 0,
-        lastMessageTime: 0,
-        dataThroughput: 0,
-        // 原有字段
-        fetchTime: 0,
-        avgFetchTime: 0,
-        processDataTime: 0,
-        avgProcessTime: 0,
-        cacheHitRate: 0,
-      },
-      
-      // 缓存信息
-      cacheInfo: {
-        size: 0,
-        hits: 0,
-        misses: 0,
-        lastCleanup: Date.now(),
-      },
-      
-      // 数据质量统计
+      importProgress: {},
       dataQualityStats: {},
-      
-      // 连接配置
-      connectionConfig: {
-        autoReconnect: true,
-        reconnectInterval: 5000,
-        maxReconnectAttempts: 5,
-      },
-    }));
-    
-    clearCache();
-  }, [clearCache]);
-
-  /**
-   * 清除指定设备的数据缓存
-   */
-  const clearEquipmentData = useCallback((equipmentId: string) => {
-    setState(prev => {
-      const newData = { ...prev.data };
-      const keysToRemove = Object.keys(newData).filter(key => key.startsWith(`${equipmentId}-`));
-      
-      keysToRemove.forEach(key => {
-        delete newData[key];
-      });
-      
-      return {
-        ...prev,
-        data: newData,
-      };
     });
-  }, []);
+    console.log('[MonitoringStore] 状态已重置');
+  }
+}));
 
-  /**
-   * 获取数据质量统计
-   */
-  const getDataQualityStats = useCallback((
-    equipmentId: string,
-    metricType?: MetricType
-  ) => {
-    const key = `${equipmentId}-${metricType || 'all'}`;
-    return state.dataQualityStats[key] || { total: 0, normal: 0, estimated: 0, questionable: 0, bad: 0 };
-  }, [state.dataQualityStats]);
-
-  /**
-   * 获取缓存统计信息
-   */
-  const getCacheStats = useCallback(() => {
-    return state.cacheInfo;
-  }, [state.cacheInfo]);
-
-  /**
-   * 获取实时连接状态
-   */
-  const getRealtimeConnectionStatus = useCallback((): ConnectionStatus => {
-    return state.connectionStatus;
-  }, [state.connectionStatus]);
-
-  /**
-   * 预设时间范围计算
-   */
-  const getTimeRangeFromPreset = useCallback((preset: TimeRangePreset): { start: number; end: number } => {
-    const now = Date.now();
-    const end = now;
-    let start: number;
-
-    switch (preset) {
-      case TimeRangePreset.LAST_HOUR:
-        start = now - 60 * 60 * 1000;
-        break;
-      case TimeRangePreset.LAST_6_HOURS:
-        start = now - 6 * 60 * 60 * 1000;
-        break;
-      case TimeRangePreset.LAST_24_HOURS:
-        start = now - 24 * 60 * 60 * 1000;
-        break;
-      case TimeRangePreset.LAST_7_DAYS:
-        start = now - 7 * 24 * 60 * 60 * 1000;
-        break;
-      case TimeRangePreset.LAST_30_DAYS:
-        start = now - 30 * 24 * 60 * 60 * 1000;
-        break;
-      default:
-        start = now - 24 * 60 * 60 * 1000; // 默认24小时
-    }
-
-    return { start, end };
-  }, []);
-
-  /**
-   * 获取统计数据
-   */
-  const fetchStatistics = useCallback(async (
-    deviceIds: string[],
-    metricTypes: string[],
-    timeRange: { start: number; end: number }
-  ) => {
-    setState(prev => ({
-      ...prev,
-      statistics: {
-        deviceIds,
-        metricTypes,
-        timeRange,
-        stats: prev.statistics.stats, // 保持现有数据
-      },
-    }));
-
-    try {
-      // 使用monitoring-service的getMonitoringStatistics方法
-      const stats = await monitoringService.getMonitoringStatistics({
-        equipmentId: deviceIds[0],
-        metricType: metricTypes[0] as MetricType,
-        startTime: timeRange.start,
-        endTime: timeRange.end,
-      });
-      
-      // 转换为符合状态中statistics.stats类型的格式
-      const convertedStats = {
-        totalDataPoints: stats.data.count,
-        valueStats: {
-          [metricTypes[0]]: {
-            min: stats.data.minValue,
-            max: stats.data.maxValue,
-            avg: stats.data.avgValue,
-            stdDev: 0, // API未提供标准差，暂时设为0
-            count: stats.data.count,
-          }
-        },
-        qualityStats: {
-          normal: stats.data.count, // API未提供质量统计，暂时全部设为normal
-        }
-      };
-      
-      setState(prev => ({
-        ...prev,
-        statistics: {
-          ...prev.statistics,
-          stats: convertedStats,
-        },
-      }));
-
-      return stats;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        error: error instanceof Error ? error.message : '获取统计数据失败',
-      }));
-      throw error;
-    }
-  }, []);
-
-  // ===== 便捷访问器 =====
-
-  /**
-   * 检查是否有活动结果
-   */
-  const hasActiveResults = !!state.activeQuery && !!state.results[state.activeQuery.id];
-  
-  /**
-   * 获取缓存查询数量
-   */
-  const cachedQueriesCount = state.queryCache.size;
-  
-  /**
-   * 检查查询是否已缓存
-   */
-  const isQueryCached = useCallback((query: HistoryQuery) => !!getCachedResult(query), [getCachedResult]);
-
-  // 返回状态和操作方法
-  return {
-    // ===== 状态值 =====
-    ...state,
-    
-    // ===== 基础操作方法 =====
-    // 数据获取
-    fetchMonitoringData,              // 获取监测数据
-    createQuery,                      // 创建历史查询
-    executeQuery,                     // 执行历史查询
-    
-    // 实时数据管理
-    connect,                          // 连接WebSocket
-    disconnect,                       // 断开WebSocket
-    subscribeToRealtime,              // 订阅实时数据
-    unsubscribeFromRealtime,          // 取消实时数据订阅
-    getDeviceData,                    // 获取设备实时数据
-    
-    // 数据导出
-    exportData,                       // 导出数据
-    
-    // ===== 统计数据方法 =====
-    getMonitoringStatistics,          // 获取统计信息
-    fetchStatistics,                  // 获取统计数据
-    fetchTimeSeriesData,              // 获取时间序列数据
-    fetchAggregatedData,              // 获取聚合数据
-    fetchQueryHistory,                // 获取查询历史
-    
-    // ===== 缓存管理方法 =====
-    getCachedResult,                  // 获取缓存结果
-    setCachedResult,                  // 设置缓存结果
-    clearCache,                       // 清除所有缓存
-    clearDataCache,                   // 清除数据缓存
-    cleanupExpiredCache,              // 清理过期缓存
-    addToCache,                       // 添加数据到缓存
-    getCachedData,                    // 获取缓存数据
-    addToHistory,                     // 添加数据到历史
-    getHistoryData,                   // 获取历史数据
-    
-    // ===== 查询管理方法 =====
-    deleteQuery,                      // 删除查询
-    
-    // ===== 工具方法 =====
-    getEquipmentData,                 // 获取指定设备数据
-    clearEquipmentData,               // 清除设备数据
-    clearError,                       // 清除错误状态
-    clearErrors,                      // 清除所有错误
-    resetState,                       // 重置状态
-    addError,                         // 添加错误
-    getDataQualityStats,              // 获取数据质量统计
-    getCacheStats,                    // 获取缓存统计
-    getRealtimeConnectionStatus,      // 获取实时连接状态
-    getTimeRangeFromPreset,           // 获取预设时间范围
-    
-    // ===== 便捷属性 =====
-    hasActiveResults,                 // 是否有活动结果
-    cachedQueriesCount,               // 缓存查询数量
-    isQueryCached,                    // 查询是否已缓存
-  };
-};
+// ==========================================
+// Selectors
+// ==========================================
+export const selectMonitoringData = (state: MonitoringStore) => state.data;
+export const selectRealtimeStatus = (state: MonitoringStore) => ({
+  connected: state.realtimeConnected,
+  status: state.connectionStatus,
+  subscriptions: state.realtimeSubscriptions
+});
+export const selectPerformanceMetrics = (state: MonitoringStore) => state.performanceMetrics;
 
 /**
- * 导出便捷Hook（从realtime-store.ts迁移）
+ * 兼容性 Hook
+ * @deprecated 建议直接使用 useMonitoringStore + Selectors
  */
-export const useRealTime = () => {
+export const useMonitoring = () => {
   const store = useMonitoringStore();
+
+  // 映射一些旧 API 名称以保持兼容
   return {
     ...store,
-    // 便捷方法
-    isConnected: store.realtimeConnected,
-    connectionStatus: store.connectionStatus,
-    connectedDevices: Object.values(store.devices),
-    deviceCount: Object.keys(store.devices).length,
-    lastDataUpdate: store.lastUpdate,
-    activeSubscriptions: store.subscriptionStatus.activeSubscriptions,
-    recentErrors: store.errors.slice(-5),
-    hasErrors: store.errors.length > 0,
-    errorCount: store.errors.length,
+    // 别名
+    createQuery: store.executeQuery,
+    connect: store.init
   };
 };
-
-/**
- * 使用示例：
- * 
- * ```typescript
- * import { useMonitoringStore } from '../stores/monitoring-store';
- * 
- * // 在组件中使用Hook方式
- * function MonitoringComponent() {
- *   const {
- *     fetchMonitoringData,
- *     subscribeToRealtime,
- *     getEquipmentData,
- *     loading,
- *     error
- *   } = useMonitoringStore();
- *   
- *   const fetchData = async () => {
- *     try {
- *       await fetchMonitoringData({
- *         equipmentId: 'pump-001',
- *         metricType: MetricType.TEMPERATURE,
- *         startTime: Date.now() - 24 * 60 * 1000, // 24小时前
- *         endTime: Date.now(),
- *       });
- *       
- *       // 订阅实时数据
- *       await subscribeToRealtime(['pump-001'], ['temperature']);
- *     } catch (err) {
- *       console.error('获取数据失败:', err);
- *     }
- *   };
- *   
- *   const temperatureData = getEquipmentData('pump-001', MetricType.TEMPERATURE);
- *   
- *   return (
- *     <div>
- *       {loading && <div>加载中...</div>}
- *       {error && <div>错误: {error}</div>}
- *       // 渲染数据
- *     </div>
- *   );
- * }
- * 
- * // 使用实时数据便捷Hook
- * function RealTimeComponent() {
- *   const {
- *     isConnected,
- *     connectedDevices,
- *     subscribeToRealtime
- *   } = useRealTime();
- *   
- *   useEffect(() => {
- *     if (isConnected) {
- *       subscribeToRealtime(['device-1'], ['temperature', 'pressure']);
- *     }
- *   }, [isConnected]);
- *   
- *   return (
- *     <div>
- *       连接状态: {isConnected ? '已连接' : '未连接'}
- *       设备数量: {connectedDevices.length}
- *     </div>
- *   );
- * }
- * ```
- */

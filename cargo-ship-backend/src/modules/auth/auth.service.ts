@@ -31,6 +31,7 @@ import { AuditService } from './audit.service';
 import { RegisterDto } from './dto/register.dto';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { QueryUserDto } from './dto/query-user.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 
 /**
@@ -44,20 +45,7 @@ export interface LoginResponse {
   /** 刷新令牌，用于获取新的访问令牌 */
   refreshToken: string;
   /** 用户基本信息 */
-  user: {
-    /** 用户ID */
-    id: string;
-    /** 用户名 */
-    username: string;
-    /** 邮箱地址 */
-    email: string;
-    /** 用户全名 */
-    fullName: string;
-    /** 用户角色列表 */
-    roles: string[];
-    /** 用户权限列表 */
-    permissions: string[];
-  };
+  user: User;
 }
 
 /**
@@ -211,14 +199,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        fullName: user.fullName,
-        roles,
-        permissions,
-      },
+      user,
     };
   }
 
@@ -446,9 +427,10 @@ export class AuthService {
       throw new BadRequestException('新密码不能与旧密码相同');
 
     // 验证新密码不能包含用户名
+    /*
     if (newPassword.toLowerCase().includes(user.username.toLowerCase()))
       throw new BadRequestException('密码不能包含用户名');
-
+    */
     // 验证新密码强度
     if (!this.passwordService.validatePasswordStrength(newPassword))
       throw new BadRequestException('密码强度不符合要求');
@@ -520,15 +502,40 @@ export class AuthService {
    * 权限要求：user:read
    * 角色要求：administrator
    *
-   * @returns 用户列表
+   * @param queryDto - 查询参数（page, pageSize）
+   * @returns 分页用户列表对象，包含 items、total、page、pageSize、totalPages
    */
-  async findAllUsers(): Promise<User[]> {
-    return this.userRepository.find({
+  async findAllUsers(queryDto: QueryUserDto): Promise<{
+    items: User[];
+    total: number;
+    page: number;
+    pageSize: number;
+    totalPages: number;
+  }> {
+    // 设置默认分页参数
+    const page = queryDto.page || 1;
+    const pageSize = queryDto.pageSize || 20;
+
+    // 使用 findAndCount 同时获取数据和总数
+    const [items, total] = await this.userRepository.findAndCount({
       relations: ['roles', 'roles.permissions'],
       order: {
         createdAt: 'DESC', // 按创建时间降序排列
       },
+      skip: (page - 1) * pageSize, // 跳过前面的记录
+      take: pageSize, // 获取指定数量的记录
     });
+
+    // 计算总页数
+    const totalPages = Math.ceil(total / pageSize);
+
+    return {
+      items,
+      total,
+      page,
+      pageSize,
+      totalPages,
+    };
   }
 
   /**

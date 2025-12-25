@@ -1,1143 +1,277 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { UnifiedMonitoringChart, ChartType, MonitoringParameter } from './UnifiedMonitoringChart';
-import { Checkbox } from './ui/checkbox';
-import { Button } from './ui/button';
-import { Card } from './ui/card';
-import { Badge } from './ui/badge';
-import { ImportStatusIndicator } from './ImportStatusIndicator';
-import { ReportGenerator } from './ui/report-generator';
+/**
+ * PropulsionMonitoringPage 组件 - 推进系统监控页面（重构版）
+ *
+ * 功能说明：
+ * - 采用监控墙模式重构的推进系统监控页面
+ * - 整合左右双推进电机的实时监控数据
+ * - 使用MonitoringWall组件实现响应式网格布局
+ * - 使用DedicatedAlarmZone组件显示推进系统专属告警
+ * - 管理实时数据订阅的生命周期（订阅/取消订阅）
+ *
+ * 页面布局：
+ * - 顶部：页面标题和面包屑导航
+ * - 中部：左右双栏监控墙（响应式网格展示所有监测点）
+ *   - 左栏：左推进电机（SYS-PROP-L-001）
+ *   - 右栏：右推进电机（SYS-PROP-R-001）
+ * - 底部：专属告警区（仅显示推进系统的告警）
+ *
+ * 架构特点：
+ * - 页面组件是"哑"组件，完全通过 Zustand stores 驱动渲染
+ * - 不包含数据获取或订阅管理的复杂逻辑（由 stores 和 services 负责）
+ * - 遵循"单一真理源"原则
+ * - 使用framer-motion实现流畅的动画效果
+ *
+ * @author 货船智能机舱管理系统开发团队
+ * @version 2.0.0 (监控墙模式)
+ * @since 2025-01-13
+ */
+
+import React, { useEffect, useState } from 'react';
 import { useMonitoringStore } from '../stores/monitoring-store';
-import { Shield, Zap, Activity, Gauge, Thermometer, TrendingUp, RotateCw, Radio } from 'lucide-react';
-import { UnifiedMonitoringData, MetricType, DataQuality, DataSource } from '../types/monitoring';
+import { useAlarmsStore } from '../stores/alarms-store';
+import { realtimeService } from '../services/realtime-service';
+import MonitoringWall from './monitoring/MonitoringWall';
+import DedicatedAlarmZone from './monitoring/DedicatedAlarmZone';
+import { Gauge, Home, ChevronRight, Wifi, WifiOff, Loader2 } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
 
-// 推进系统核心指标类型定义
-// 包含双推进电机（左右电机）的所有关键运行参数和状态信息
-interface PropulsionMetrics {
-  leftVoltage: number;           // 左推进电机电压 (V)
-  rightVoltage: number;          // 右推进电机电压 (V)
-  leftRpm: number;               // 左推进电机转速 (RPM)
-  rightRpm: number;              // 右推进电机转速 (RPM)
-  leftTemp: number;              // 左推进电机温度 (°C)
-  rightTemp: number;             // 右推进电机温度 (°C)
-  leftFreq: number;              // 左推进电机工作频率 (Hz)
-  rightFreq: number;             // 右推进电机工作频率 (Hz)
-  leftInverterVoltage: number;   // 左逆变器输出电压 (V)
-  rightInverterVoltage: number;  // 右逆变器输出电压 (V)
-  efficiency: number;            // 推进系统整体效率 (%)
-  status: 'normal' | 'warning' | 'critical';  // 系统运行状态
-  lastUpdate: number;            // 最后更新时间戳
-}
+// ============================================================================
+// 常量定义
+// ============================================================================
 
-// 推进电机设备状态类型定义
-// 用于描述单个推进电机的详细运行参数和状态信息
-interface PropulsionMotor {
-  id: string;                       // 设备唯一标识符
-  name: string;                     // 电机名称（如"左推进电机"、"右推进电机"）
-  voltage: number;                  // 电机工作电压 (V)
-  rpm: number;                      // 电机转速 (RPM)
-  temperature: number;              // 电机运行温度 (°C)
-  frequency: number;                // 工作频率 (Hz)
-  efficiency: number;               // 电机效率 (%)
-  status: 'normal' | 'warning' | 'critical';  // 设备运行状态
-}
+/**
+ * 左推进电机设备ID
+ */
+const LEFT_PROPULSION_EQUIPMENT_ID = 'SYS-PROP-L-001';
 
-// 推进系统连接状态指示器组件
-// 显示推进系统与监控网络的连接状态，包含颜色编码和状态图标
-const PropulsionConnectionStatus = ({ status }: { status: 'connected' | 'disconnected' | 'connecting' }) => {
-  const statusConfig = {
-    connected: {
-      color: 'text-green-400',    // 已连接：绿色文字
-      bg: 'bg-green-500/20',      // 已连接：浅绿色背景
-      text: '已连接',
-      icon: '🟢'
-    },
-    connecting: {
-      color: 'text-yellow-400',   // 连接中：黄色文字
-      bg: 'bg-yellow-500/20',     // 连接中：浅黄色背景
-      text: '连接中',
-      icon: '🟡'
-    },
-    disconnected: {
-      color: 'text-red-400',      // 断开连接：红色文字
-      bg: 'bg-red-500/20',        // 断开连接：浅红色背景
-      text: '断开连接',
-      icon: '🔴'
-    },
-  };
+/**
+ * 右推进电机设备ID
+ */
+const RIGHT_PROPULSION_EQUIPMENT_ID = 'SYS-PROP-R-001';
 
-  const config = statusConfig[status];
+/**
+ * 页面标题
+ */
+const PAGE_TITLE = '推进系统监控';
+
+/**
+ * 面包屑导航配置
+ */
+const BREADCRUMBS = [
+  { label: '首页', path: '/dashboard', icon: Home },
+  { label: '实时监控', path: '/monitoring' },
+  { label: PAGE_TITLE, path: '/monitoring/propulsion' },
+];
+
+// ============================================================================
+// 连接状态指示器组件
+// ============================================================================
+
+/**
+ * ConnectionStatusIndicator - 连接状态指示器
+ *
+ * 显示 WebSocket 连接状态，帮助用户了解实时数据流的连接情况
+ */
+const ConnectionStatusIndicator: React.FC = () => {
+  const { realtimeConnected, connectionStatus } = useMonitoringStore((state) => ({
+    realtimeConnected: state.realtimeConnected,
+    connectionStatus: state.connectionStatus,
+  }));
+
+  if (realtimeConnected) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-green-400">
+        <Wifi className="w-4 h-4" />
+        <span>实时连接</span>
+      </div>
+    );
+  }
 
   return (
-    <div className={`flex items-center gap-2 px-3 py-2 rounded-lg ${config.bg}`}>
-      <span className="text-lg">{config.icon}</span>
-      <span className={`text-sm font-medium ${config.color}`}>{config.text}</span>
+    <div className="flex items-center gap-2 text-sm text-red-400">
+      <WifiOff className="w-4 h-4" />
+      <span>连接中断</span>
     </div>
   );
 };
 
-// 推进系统概览组件
-// 以卡片网格形式展示双推进电机的关键运行参数，提供系统状态的快速概览
-const PropulsionOverview = ({ metrics }: { metrics: PropulsionMetrics }) => {
-  // 根据运行状态获取对应的文字颜色样式
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'normal': return 'text-green-400';    // 正常状态：绿色文字
-      case 'warning': return 'text-yellow-400';  // 警告状态：黄色文字
-      case 'critical': return 'text-red-400';    // 严重状态：红色文字
-      default: return 'text-slate-400';          // 默认状态：灰色文字
-    }
-  };
+// ============================================================================
+// 面包屑导航组件
+// ============================================================================
 
-  // 根据运行状态获取对应的背景颜色样式
-  const getStatusBg = (status: string) => {
-    switch (status) {
-      case 'normal': return 'bg-green-500/20';   // 正常背景：浅绿色
-      case 'warning': return 'bg-yellow-500/20'; // 警告背景：浅黄色
-      case 'critical': return 'bg-red-500/20';   // 严重背景：浅红色
-      default: return 'bg-slate-500/20';         // 默认背景：浅灰色
-    }
-  };
-
+/**
+ * Breadcrumbs - 面包屑导航
+ *
+ * 提供清晰的页面层级导航，帮助用户了解当前位置
+ */
+const Breadcrumbs: React.FC = () => {
   return (
-    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Zap className="w-8 h-8 text-cyan-400" />
-          <div>
-            <p className="text-slate-400 text-sm">左电机电压</p>
-            <p className="text-slate-100 text-xl font-bold">{metrics.leftVoltage.toFixed(1)}V</p>
-          </div>
-        </div>
-      </Card>
+    <nav className="flex items-center gap-2 text-sm text-slate-300 mb-4 font-medium">
+      {BREADCRUMBS.map((crumb, index) => {
+        const isLast = index === BREADCRUMBS.length - 1;
+        const Icon = crumb.icon;
 
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Zap className="w-8 h-8 text-cyan-400" />
-          <div>
-            <p className="text-slate-400 text-sm">右电机电压</p>
-            <p className="text-slate-100 text-xl font-bold">{metrics.rightVoltage.toFixed(1)}V</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Activity className="w-8 h-8 text-purple-400" />
-          <div>
-            <p className="text-slate-400 text-sm">左电机转速</p>
-            <p className="text-slate-100 text-xl font-bold">{Math.round(metrics.leftRpm)}RPM</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Activity className="w-8 h-8 text-purple-400" />
-          <div>
-            <p className="text-slate-400 text-sm">右电机转速</p>
-            <p className="text-slate-100 text-xl font-bold">{Math.round(metrics.rightRpm)}RPM</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className="bg-slate-800/60 border-slate-700 p-4">
-        <div className="flex items-center gap-3">
-          <Gauge className="w-8 h-8 text-orange-400" />
-          <div>
-            <p className="text-slate-400 text-sm">左电机温度</p>
-            <p className="text-slate-100 text-xl font-bold">{metrics.leftTemp.toFixed(1)}°C</p>
-          </div>
-        </div>
-      </Card>
-
-      <Card className={`bg-slate-800/60 border-slate-700 p-4 ${getStatusBg(metrics.status)}`}>
-        <div className="flex items-center gap-3">
-          <Shield className={`w-8 h-8 ${getStatusColor(metrics.status)}`} />
-          <div>
-            <p className="text-slate-400 text-sm">系统状态</p>
-            <p className={`text-xl font-bold ${getStatusColor(metrics.status)}`}>
-              {metrics.status === 'normal' ? '正常' : metrics.status === 'warning' ? '警告' : '严重'}
-            </p>
-          </div>
-        </div>
-      </Card>
-    </div>
+        return (
+          <React.Fragment key={crumb.path}>
+            {index > 0 && <ChevronRight className="w-4 h-4 opacity-50" />}
+            {isLast ? (
+              <span className="text-white font-bold flex items-center gap-1">
+                {Icon && <Icon className="w-4 h-4" />}
+                {crumb.label}
+              </span>
+            ) : (
+              <Link
+                to={crumb.path}
+                className="text-slate-300 hover:text-white transition-colors flex items-center gap-1"
+              >
+                {Icon && <Icon className="w-4 h-4" />}
+                {crumb.label}
+              </Link>
+            )}
+          </React.Fragment>
+        );
+      })}
+    </nav>
   );
 };
 
-// 推进系统监控模拟数据
-// 包含24小时历史数据，展示双推进电机在不同时间点的运行参数变化
-const propulsionData = [
-  { time: '00:00', leftVoltage: 380, rightVoltage: 378, leftRpm: 1550, rightRpm: 1480, leftTemp: 62, rightTemp: 60 },
-  { time: '04:00', leftVoltage: 375, rightVoltage: 376, leftRpm: 1520, rightRpm: 1500, leftTemp: 58, rightTemp: 57 },
-  { time: '08:00', leftVoltage: 385, rightVoltage: 382, leftRpm: 1580, rightRpm: 1520, leftTemp: 65, rightTemp: 63 },
-  { time: '12:00', leftVoltage: 390, rightVoltage: 388, leftRpm: 1600, rightRpm: 1550, leftTemp: 68, rightTemp: 66 },
-  { time: '16:00', leftVoltage: 382, rightVoltage: 380, leftRpm: 1560, rightRpm: 1510, leftTemp: 64, rightTemp: 62 },
-  { time: '20:00', leftVoltage: 378, rightVoltage: 379, leftRpm: 1540, rightRpm: 1490, leftTemp: 61, rightTemp: 59 },
-  { time: '24:00', leftVoltage: 380, rightVoltage: 378, leftRpm: 1550, rightRpm: 1480, leftTemp: 62, rightTemp: 60 },
-];
+// ============================================================================
+// PropulsionMonitoringPage 组件
+// ============================================================================
 
-// 推进系统图表参数配置
-// 定义图表中显示的参数项，包含数据键名、显示标签和线条颜色配置
-const propulsionParameters: MonitoringParameter[] = [
-  {
-    key: 'leftVoltage',
-    label: '左电机电压',
-    metricType: MetricType.VOLTAGE,
-    color: '#06b6d4',
-    unit: 'V',
-    threshold: {
-      warning: 400,
-      critical: 300,
-      showLines: true
-    }
-  },
-  {
-    key: 'rightVoltage',
-    label: '右电机电压',
-    metricType: MetricType.VOLTAGE,
-    color: '#0ea5e9',
-    unit: 'V',
-    threshold: {
-      warning: 400,
-      critical: 300,
-      showLines: true
-    }
-  },
-  {
-    key: 'leftRpm',
-    label: '左电机转速',
-    metricType: MetricType.SPEED,
-    color: '#8b5cf6',
-    unit: 'rpm',
-    threshold: {
-      warning: 1600,
-      critical: 1800,
-      showLines: true
-    }
-  },
-  {
-    key: 'rightRpm',
-    label: '右电机转速',
-    metricType: MetricType.SPEED,
-    color: '#a78bfa',
-    unit: 'rpm',
-    threshold: {
-      warning: 1600,
-      critical: 1800,
-      showLines: true
-    }
-  },
-  {
-    key: 'leftTemp',
-    label: '左电机温度',
-    metricType: MetricType.TEMPERATURE,
-    color: '#f59e0b',
-    unit: '°C',
-    threshold: {
-      warning: 75,
-      critical: 80,
-      showLines: true
-    }
-  },
-  {
-    key: 'rightTemp',
-    label: '右电机温度',
-    metricType: MetricType.TEMPERATURE,
-    color: '#fb923c',
-    unit: '°C',
-    threshold: {
-      warning: 75,
-      critical: 80,
-      showLines: true
-    }
-  },
-];
+/**
+ * PropulsionMonitoringPage - 推进系统监控页面
+ *
+ * 采用监控墙模式的标准实现，使用左右双栏布局展示双电机监控
+ */
+export const PropulsionMonitoringPage: React.FC = () => {
+  // --------------------------------------------------------------------------
+  // 状态管理
+  // --------------------------------------------------------------------------
 
-// Mock propulsion specification table data
-const propulsionSpecs = [
-  {
-    item: '左电机电压',
-    unit: 'V',
-    threshold: '300-420V',
-    action: '检查电源',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: false,
-  },
-  {
-    item: '右电机电压',
-    unit: 'V',
-    threshold: '300-420V',
-    action: '检查电源',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: false,
-  },
-  {
-    item: '左电机转速',
-    unit: 'rpm',
-    threshold: '0-2000',
-    action: '降低负载',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: true,
-  },
-  {
-    item: '右电机转速',
-    unit: 'rpm',
-    threshold: '0-2000',
-    action: '降低负载',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: true,
-  },
-  {
-    item: '左电机温度',
-    unit: '°C',
-    threshold: '<80°C',
-    action: '启动冷却',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: true,
-  },
-  {
-    item: '右电机温度',
-    unit: '°C',
-    threshold: '<80°C',
-    action: '启动冷却',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: true,
-  },
-  {
-    item: '左电机频率',
-    unit: 'Hz',
-    threshold: '0-100Hz',
-    action: '检查变频器',
-    cockpitDisplay: false,
-    cockpitWarning: false,
-    localDisplay: true,
-    localWarning: false,
-  },
-  {
-    item: '右电机频率',
-    unit: 'Hz',
-    threshold: '0-100Hz',
-    action: '检查变频器',
-    cockpitDisplay: false,
-    cockpitWarning: false,
-    localDisplay: true,
-    localWarning: false,
-  },
-  {
-    item: '左逆变器电压',
-    unit: 'V',
-    threshold: '600-750V',
-    action: '检查逆变器',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: true,
-  },
-  {
-    item: '右逆变器电压',
-    unit: 'V',
-    threshold: '600-750V',
-    action: '检查逆变器',
-    cockpitDisplay: true,
-    cockpitWarning: true,
-    localDisplay: true,
-    localWarning: true,
-  },
-];
+  // 页面初始化状态（由原本的 true 改为 false，因为订阅现已在全局完成）
+  const [isInitializing] = useState(false);
 
-// Mock alert history
-const propulsionAlerts = [
-  {
-    id: 1,
-    timestamp: '2025-11-11 13:45:22',
-    item: '推进效率',
-    level: 'warning' as const,
-    description: '推进系统效率下降15%',
-    status: 'active' as const,
-    operator: '技术员B检查中',
-  },
-  {
-    id: 2,
-    timestamp: '2025-11-11 11:20:15',
-    item: '左电机温度',
-    level: 'warning' as const,
-    description: '左电机温度达到75°C',
-    status: 'resolved' as const,
-    operator: '冷却系统已启动',
-  },
-  {
-    id: 3,
-    timestamp: '2025-11-11 09:30:00',
-    item: '右电机转速',
-    level: 'info' as const,
-    description: '右电机转速波动±50rpm',
-    status: 'resolved' as const,
-  },
-  {
-    id: 4,
-    timestamp: '2025-11-11 07:15:45',
-    item: '电机电压',
-    level: 'info' as const,
-    description: '双电机电压平衡正常',
-    status: 'resolved' as const,
-  },
-];
+  // --------------------------------------------------------------------------
+  // 渲染逻辑
+  // --------------------------------------------------------------------------
 
-// 推进系统监控页面主组件
-// 提供完整的双推进电机监控功能，包括实时数据显示、设备状态监控、图表可视化和告警管理
-export function PropulsionMonitoringPage() {
-  // 使用统一监测数据状态管理Hook
-  const {
-    realtimeConnected,        // 实时连接状态
-    connectionStatus,         // 连接状态详情
-    devices,                  // 设备数据映射
-    lastUpdate,               // 最后数据更新时间
-    errors,                   // 错误列表
-    getDeviceData,            // 获取设备数据函数
-    subscribeToRealtime,      // 订阅实时数据
-    fetchMonitoringData,      // 获取监测数据
-    getEquipmentData,         // 获取设备数据
-  } = useMonitoringStore();
-
-  // 派生状态计算
-  const connectedDevices = Object.values(devices);
-  const deviceCount = Object.keys(devices).length;
-  const hasErrors = errors.length > 0;
-
-  // 推进系统核心指标状态管理
-  // 存储双推进电机的所有关键运行参数，初始化为正常运行时的典型值
-  const [propulsionMetrics, setPropulsionMetrics] = useState<PropulsionMetrics>({
-    leftVoltage: 382.5,           // 左电机电压 382.5V
-    rightVoltage: 379.8,          // 右电机电压 379.8V
-    leftRpm: 1560,                // 左电机转速 1560 RPM
-    rightRpm: 1490,               // 右电机转速 1490 RPM
-    leftTemp: 63.5,               // 左电机温度 63.5°C
-    rightTemp: 61.2,              // 右电机温度 61.2°C
-    leftFreq: 52.3,               // 左电机频率 52.3Hz
-    rightFreq: 49.7,              // 右电机频率 49.7Hz
-    leftInverterVoltage: 682.4,   // 左逆变器电压 682.4V
-    rightInverterVoltage: 678.9,  // 右逆变器电压 678.9V
-    efficiency: 94.2,             // 系统效率 94.2%
-    status: 'normal',             // 初始系统状态为正常
-    lastUpdate: Date.now(),       // 最后更新时间
-  });
-
-  // 推进电机状态数组
-  // 存储每个推进电机的详细信息，动态更新运行参数和状态
-  const [propulsionMotors, setPropulsionMotors] = useState<PropulsionMotor[]>([]);
-
-  // 实时图表数据存储
-  // 用于显示历史趋势图的原始数据点数组，支持多参数趋势分析
-  const [realtimeChartData, setRealtimeChartData] = useState<UnifiedMonitoringData[]>([]);
-
-  // 组件初始化和数据连接
-  useEffect(() => {
-    initializePropulsionMotors();
-    generateInitialChartData();
-
-    // 连接实时数据服务
-    const initializeDataConnection = async () => {
-      try {
-        // 订阅推进系统的实时数据
-        await subscribeToRealtime(['MOTOR-L-001', 'MOTOR-R-001'], ['voltage', 'speed', 'temperature', 'frequency']);
-
-        // 获取历史数据
-        await fetchMonitoringData({
-          equipmentId: 'MOTOR-L-001',
-          metricType: MetricType.VOLTAGE,
-          startTime: Date.now() - 24 * 60 * 60 * 1000, // 24小时前
-          endTime: Date.now(),
-          page: 1,
-          pageSize: 1000
-        });
-      } catch (error) {
-        console.warn('无法连接到实时数据服务，使用模拟数据:', error);
-      }
-    };
-
-    // 初始化数据连接
-    initializeDataConnection();
-
-    // 定期更新推进数据（备用数据）
-    const updateInterval = setInterval(() => {
-      updatePropulsionMetrics();
-      updateChartData();
-    }, 2500); // 每2.5秒更新
-
-    return () => {
-      clearInterval(updateInterval);
-    };
-  }, []); // 空依赖数组，使用模拟数据作为备用
-
-  // 初始化推进电机
-  const initializePropulsionMotors = () => {
-    const motors: PropulsionMotor[] = [
-      { id: 'motor-left', name: '左推进电机', voltage: 382.5, rpm: 1560, temperature: 63.5, frequency: 52.3, efficiency: 94.2, status: 'normal' },
-      { id: 'motor-right', name: '右推进电机', voltage: 379.8, rpm: 1490, temperature: 61.2, frequency: 49.7, efficiency: 93.8, status: 'normal' },
-    ];
-    setPropulsionMotors(motors);
-  };
-
-  // 生成初始图表数据
-  const generateInitialChartData = () => {
-    const now = Date.now();
-    const data: UnifiedMonitoringData[] = [];
-
-    for (let i = 59; i >= 0; i--) {
-      const timestamp = now - i * 2500;
-
-      // 左电机数据
-      data.push({
-        id: `left_voltage_${timestamp}`,
-        equipmentId: 'MOTOR-L-001',
-        timestamp,
-        metricType: MetricType.VOLTAGE,
-        value: 380 + Math.random() * 20,
-        unit: 'V',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      });
-
-      data.push({
-        id: `right_voltage_${timestamp}`,
-        equipmentId: 'MOTOR-R-001',
-        timestamp,
-        metricType: MetricType.VOLTAGE,
-        value: 375 + Math.random() * 15,
-        unit: 'V',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      });
-
-      data.push({
-        id: `left_rpm_${timestamp}`,
-        equipmentId: 'MOTOR-L-001',
-        timestamp,
-        metricType: MetricType.SPEED,
-        value: 1500 + Math.random() * 200,
-        unit: 'rpm',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      });
-
-      data.push({
-        id: `right_rpm_${timestamp}`,
-        equipmentId: 'MOTOR-R-001',
-        timestamp,
-        metricType: MetricType.SPEED,
-        value: 1450 + Math.random() * 150,
-        unit: 'rpm',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      });
-
-      data.push({
-        id: `left_temp_${timestamp}`,
-        equipmentId: 'MOTOR-L-001',
-        timestamp,
-        metricType: MetricType.TEMPERATURE,
-        value: 60 + Math.random() * 10,
-        unit: '°C',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      });
-
-      data.push({
-        id: `right_temp_${timestamp}`,
-        equipmentId: 'MOTOR-R-001',
-        timestamp,
-        metricType: MetricType.TEMPERATURE,
-        value: 58 + Math.random() * 8,
-        unit: '°C',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      });
-    }
-    setRealtimeChartData(data);
-  };
-
-  // 更新推进指标
-  const updatePropulsionMetrics = useCallback(() => {
-    setPropulsionMetrics(prev => {
-      const leftVoltage = prev.leftVoltage + (Math.random() - 0.5) * 3;
-      const rightVoltage = prev.rightVoltage + (Math.random() - 0.5) * 3;
-      const leftRpm = Math.max(0, Math.min(2000, prev.leftRpm + (Math.random() - 0.5) * 50));
-      const rightRpm = Math.max(0, Math.min(2000, prev.rightRpm + (Math.random() - 0.5) * 50));
-      const leftTemp = Math.max(0, prev.leftTemp + (Math.random() - 0.5) * 2);
-      const rightTemp = Math.max(0, prev.rightTemp + (Math.random() - 0.5) * 2);
-      const leftFreq = Math.max(0, prev.leftFreq + (Math.random() - 0.5) * 2);
-      const rightFreq = Math.max(0, prev.rightFreq + (Math.random() - 0.5) * 2);
-      const leftInverterVoltage = 680 + Math.random() * 10;
-      const rightInverterVoltage = 675 + Math.random() * 10;
-      const efficiency = Math.max(80, Math.min(100, 94 + (Math.random() - 0.5) * 4));
-
-      // 检查告警条件
-      let status: 'normal' | 'warning' | 'critical' = 'normal';
-      if (leftTemp > 80 || rightTemp > 80) {
-        status = 'critical';
-      } else if (leftTemp > 75 || rightTemp > 75) {
-        status = 'warning';
-      }
-
-      const newMetrics = {
-        leftVoltage,
-        rightVoltage,
-        leftRpm,
-        rightRpm,
-        leftTemp,
-        rightTemp,
-        leftFreq,
-        rightFreq,
-        leftInverterVoltage,
-        rightInverterVoltage,
-        efficiency,
-        status,
-        lastUpdate: Date.now(),
-      };
-
-      return newMetrics;
-    });
-
-    // 更新电机状态
-    setPropulsionMotors(prev => prev.map(motor => ({
-      ...motor,
-      voltage: motor.voltage + (Math.random() - 0.5) * 3,
-      rpm: Math.max(0, Math.min(2000, motor.rpm + (Math.random() - 0.5) * 50)),
-      temperature: Math.max(0, motor.temperature + (Math.random() - 0.5) * 2),
-      frequency: Math.max(0, motor.frequency + (Math.random() - 0.5) * 2),
-      efficiency: Math.max(80, Math.min(100, motor.efficiency + (Math.random() - 0.5) * 2)),
-      status: Math.random() > 0.9 ? 'critical' : Math.random() > 0.85 ? 'warning' : 'normal',
-    })));
-  }, []);
-
-  // 更新图表数据
-  const updateChartData = useCallback(() => {
-    const timestamp = Date.now();
-    const newPoints: UnifiedMonitoringData[] = [
-      {
-        id: `left_voltage_${timestamp}`,
-        equipmentId: 'MOTOR-L-001',
-        timestamp,
-        metricType: MetricType.VOLTAGE,
-        value: propulsionMetrics.leftVoltage + (Math.random() - 0.5) * 3,
-        unit: 'V',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `right_voltage_${timestamp}`,
-        equipmentId: 'MOTOR-R-001',
-        timestamp,
-        metricType: MetricType.VOLTAGE,
-        value: propulsionMetrics.rightVoltage + (Math.random() - 0.5) * 3,
-        unit: 'V',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `left_rpm_${timestamp}`,
-        equipmentId: 'MOTOR-L-001',
-        timestamp,
-        metricType: MetricType.SPEED,
-        value: propulsionMetrics.leftRpm + (Math.random() - 0.5) * 50,
-        unit: 'rpm',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `right_rpm_${timestamp}`,
-        equipmentId: 'MOTOR-R-001',
-        timestamp,
-        metricType: MetricType.SPEED,
-        value: propulsionMetrics.rightRpm + (Math.random() - 0.5) * 50,
-        unit: 'rpm',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `left_temp_${timestamp}`,
-        equipmentId: 'MOTOR-L-001',
-        timestamp,
-        metricType: MetricType.TEMPERATURE,
-        value: propulsionMetrics.leftTemp + (Math.random() - 0.5) * 2,
-        unit: '°C',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      },
-      {
-        id: `right_temp_${timestamp}`,
-        equipmentId: 'MOTOR-R-001',
-        timestamp,
-        metricType: MetricType.TEMPERATURE,
-        value: propulsionMetrics.rightTemp + (Math.random() - 0.5) * 2,
-        unit: '°C',
-        quality: DataQuality.NORMAL,
-        source: DataSource.SENSOR_UPLOAD
-      }
-    ];
-
-    setRealtimeChartData(prev => [...prev, ...newPoints].slice(-288)); // 保持最近48个时间点的数据（6个参数×48个时间点）
-  }, [propulsionMetrics]);
-
-  // 数据导出功能
-  // 将当前的推进系统监控数据导出为JSON格式文件，包含完整的系统状态和历史数据
-  const exportData = () => {
-    // 准备导出数据结构，包含时间戳、系统指标、设备状态、图表数据和连接状态
-    const exportData = {
-      timestamp: Date.now(),          // 导出时间戳
-      propulsionMetrics,             // 推进系统核心指标数据
-      propulsionMotors,              // 推进电机详细状态信息
-      chartData: realtimeChartData,  // 实时图表数据点
-      connectionStatus,              // 系统连接状态
-    };
-
-    // 创建Blob对象并生成下载链接
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: 'application/json',      // 指定MIME类型为JSON
-    });
-
-    const url = URL.createObjectURL(blob); // 创建对象URL
-    const link = document.createElement('a'); // 创建下载链接
-    link.href = url;
-    link.download = `propulsion-data-${new Date().toISOString().split('T')[0]}.json`; // 设置文件名
-    link.click(); // 触发下载
-
-    // 清理：释放对象URL资源
-    URL.revokeObjectURL(url);
-  };
-
-  return (
-    <div className="min-h-full bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-6">
-      <div className="max-w-7xl mx-auto space-y-6">
-        {/* 标题和控制栏 */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
-              <Activity className="w-8 h-8 text-cyan-400" />
-              推进系统监控
-            </h1>
-            <p className="text-slate-400 mt-1">货船智能机舱推进系统实时监控与管理</p>
-          </div>
-          <div className="flex items-center gap-4">
-            {/* 报表生成器 */}
-            <ReportGenerator
-              context={{ type: 'propulsion', defaultDateRange: 7 }}
-              variant="outline"
-              size="sm"
-              compact={true}
-              buttonText="生成推进报表"
-              onReportGenerated={(report) => {
-                console.info('推进系统报表生成成功:', report);
-              }}
-              onError={(error) => {
-                console.error('推进系统报表生成失败:', error);
-              }}
-            />
-            <PropulsionConnectionStatus status={
-              connectionStatus === 'error' || connectionStatus === 'reconnecting'
-                ? 'disconnected'
-                : connectionStatus as 'connected' | 'disconnected' | 'connecting'
-            } />
-            <Button
-              onClick={exportData}
-              className="bg-cyan-600 hover:bg-cyan-700"
-            >
-              导出数据
-            </Button>
-          </div>
-        </div>
-
-        {/* 左推进电机实时监控 */}
-        <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-cyan-400"></div>
-              左推进电机实时监控
-            </h3>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm text-slate-400">实时更新中</span>
-            </div>
-          </div>
-
-          {/* 左推进电机指标卡片 - 5个指标横向排列 */}
-          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
-            {/* 电压 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                  <Zap className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.leftVoltage > 400 ? 'bg-yellow-500/20 text-yellow-400' : propulsionMetrics.leftVoltage < 350 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.leftVoltage > 400 ? '偏高' : propulsionMetrics.leftVoltage < 350 ? '偏低' : '正常'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-cyan-400 mb-1">
-                {propulsionMetrics.leftVoltage.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">V</span>
-              </div>
-              <div className="text-xs text-slate-400">电压</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.leftVoltage / 420) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 温度 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center animate-icon-glow">
-                  <Thermometer className="w-5 h-5 text-amber-400" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.leftTemp > 75 ? 'bg-red-500/20 text-red-400' : propulsionMetrics.leftTemp > 65 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.leftTemp > 75 ? '过热' : propulsionMetrics.leftTemp > 65 ? '偏高' : '正常'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-amber-400 mb-1">
-                {propulsionMetrics.leftTemp.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
-              </div>
-              <div className="text-xs text-slate-400">温度</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.leftTemp / 80) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 转速 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                  <RotateCw className="w-5 h-5 text-purple-400 animate-slow-spin" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.leftRpm > 1700 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.leftRpm > 1700 ? '高速' : '正常'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-purple-400 mb-1">
-                {Math.round(propulsionMetrics.leftRpm)}
-                <span className="text-sm font-normal text-slate-400 ml-1">RPM</span>
-              </div>
-              <div className="text-xs text-slate-400">转速</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.leftRpm / 2000) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 频率 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                  <Radio className="w-5 h-5 text-blue-400 animate-icon-ping" />
-                </div>
-                <Badge className="text-xs bg-green-500/20 text-green-400">正常</Badge>
-              </div>
-              <div className="text-2xl font-bold text-blue-400 mb-1">
-                {propulsionMetrics.leftFreq.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">Hz</span>
-              </div>
-              <div className="text-xs text-slate-400">频率</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.leftFreq / 60) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 效率 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-green-400 animate-icon-bounce" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.efficiency < 90 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.efficiency < 90 ? '偏低' : '良好'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-green-400 mb-1">
-                {propulsionMetrics.efficiency.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
-              </div>
-              <div className="text-xs text-slate-400">效率</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-500 ${propulsionMetrics.efficiency < 90 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-green-400 to-green-600'}`}
-                  style={{ width: `${propulsionMetrics.efficiency}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* 右推进电机实时监控 */}
-        <Card className="bg-slate-800/80 border-slate-700 p-6">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-slate-100 text-lg font-semibold flex items-center gap-2">
-              <div className="w-3 h-3 rounded-full bg-purple-400"></div>
-              右推进电机实时监控
-            </h3>
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-sm text-slate-400">实时更新中</span>
-            </div>
-          </div>
-
-          {/* 右推进电机指标卡片 - 5个指标横向排列 */}
-          <div style={{ display: 'flex', flexDirection: 'row', gap: '1rem' }}>
-            {/* 电压 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-cyan-500/20 to-cyan-600/10 border border-cyan-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-cyan-500/20 flex items-center justify-center">
-                  <Zap className="w-5 h-5 text-cyan-400 animate-icon-pulse" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.rightVoltage > 400 ? 'bg-yellow-500/20 text-yellow-400' : propulsionMetrics.rightVoltage < 350 ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.rightVoltage > 400 ? '偏高' : propulsionMetrics.rightVoltage < 350 ? '偏低' : '正常'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-cyan-400 mb-1">
-                {propulsionMetrics.rightVoltage.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">V</span>
-              </div>
-              <div className="text-xs text-slate-400">电压</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-cyan-400 to-cyan-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.rightVoltage / 420) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 温度 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-amber-500/20 to-amber-600/10 border border-amber-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-amber-500/20 flex items-center justify-center animate-icon-glow">
-                  <Thermometer className="w-5 h-5 text-amber-400" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.rightTemp > 75 ? 'bg-red-500/20 text-red-400' : propulsionMetrics.rightTemp > 65 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.rightTemp > 75 ? '过热' : propulsionMetrics.rightTemp > 65 ? '偏高' : '正常'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-amber-400 mb-1">
-                {propulsionMetrics.rightTemp.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">°C</span>
-              </div>
-              <div className="text-xs text-slate-400">温度</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-amber-400 to-amber-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.rightTemp / 80) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 转速 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-purple-500/20 to-purple-600/10 border border-purple-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                  <RotateCw className="w-5 h-5 text-purple-400 animate-slow-spin" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.rightRpm > 1700 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.rightRpm > 1700 ? '高速' : '正常'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-purple-400 mb-1">
-                {Math.round(propulsionMetrics.rightRpm)}
-                <span className="text-sm font-normal text-slate-400 ml-1">RPM</span>
-              </div>
-              <div className="text-xs text-slate-400">转速</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-purple-400 to-purple-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.rightRpm / 2000) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 频率 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-blue-500/20 to-blue-600/10 border border-blue-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-500/20 flex items-center justify-center">
-                  <Radio className="w-5 h-5 text-blue-400 animate-icon-ping" />
-                </div>
-                <Badge className="text-xs bg-green-500/20 text-green-400">正常</Badge>
-              </div>
-              <div className="text-2xl font-bold text-blue-400 mb-1">
-                {propulsionMetrics.rightFreq.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">Hz</span>
-              </div>
-              <div className="text-xs text-slate-400">频率</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-400 to-blue-600 transition-all duration-500"
-                  style={{ width: `${Math.min((propulsionMetrics.rightFreq / 60) * 100, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* 效率 */}
-            <div style={{ flex: 1 }} className="bg-gradient-to-br from-green-500/20 to-green-600/10 border border-green-500/30 rounded-xl p-4 hover:scale-105 transition-all duration-300">
-              <div className="flex items-center justify-between mb-3">
-                <div className="w-10 h-10 rounded-lg bg-green-500/20 flex items-center justify-center">
-                  <TrendingUp className="w-5 h-5 text-green-400 animate-icon-bounce" />
-                </div>
-                <Badge className={`text-xs ${propulsionMetrics.efficiency < 90 ? 'bg-yellow-500/20 text-yellow-400' : 'bg-green-500/20 text-green-400'}`}>
-                  {propulsionMetrics.efficiency < 90 ? '偏低' : '良好'}
-                </Badge>
-              </div>
-              <div className="text-2xl font-bold text-green-400 mb-1">
-                {propulsionMetrics.efficiency.toFixed(1)}
-                <span className="text-sm font-normal text-slate-400 ml-1">%</span>
-              </div>
-              <div className="text-xs text-slate-400">效率</div>
-              <div className="mt-2 h-1 bg-slate-700 rounded-full overflow-hidden">
-                <div
-                  className={`h-full transition-all duration-500 ${propulsionMetrics.efficiency < 90 ? 'bg-gradient-to-r from-yellow-400 to-yellow-600' : 'bg-gradient-to-r from-green-400 to-green-600'}`}
-                  style={{ width: `${propulsionMetrics.efficiency}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </Card>
-
-        {/* 实时图表 */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <UnifiedMonitoringChart
-            realtimeData={realtimeChartData.filter(item =>
-              item.equipmentId === 'MOTOR-L-001' && item.metricType === MetricType.VOLTAGE
-            )}
-            parameters={[propulsionParameters[0]]}
-            chartType={ChartType.LINE}
-            config={{
-              title: "左电机电压监控",
-              height: 300,
-              showGrid: true,
-              showLegend: true,
-              showTooltip: true,
-              showExport: true,
-              showFullscreen: true,
-              autoRefresh: true,
-              refreshInterval: 2500,
-              maxDataPoints: 48
-            }}
-          />
-
-          <UnifiedMonitoringChart
-            realtimeData={realtimeChartData.filter(item =>
-              item.equipmentId === 'MOTOR-L-001' && item.metricType === MetricType.SPEED
-            )}
-            parameters={[propulsionParameters[2]]}
-            chartType={ChartType.LINE}
-            config={{
-              title: "左电机转速监控",
-              height: 300,
-              showGrid: true,
-              showLegend: true,
-              showTooltip: true,
-              showExport: true,
-              showFullscreen: true,
-              autoRefresh: true,
-              refreshInterval: 2500,
-              maxDataPoints: 48
-            }}
-          />
-        </div>
-
-        {/* Main Content Grid */}
-        <div className="grid grid-cols-1 gap-6">
-          {/* Specifications Table */}
-          <div>
-            <div className="bg-slate-800/80 border border-slate-700 rounded-lg p-6">
-              <h3 className="text-slate-100 mb-4">实时详细推进参数</h3>
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className="border-b border-slate-700">
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">监测项目</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">单位</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">告警阈值</th>
-                      <th className="text-left py-3 px-3 text-slate-300 text-sm">处理措施</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台显示</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">驾控台警告</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">就地显示</th>
-                      <th className="text-center py-3 px-3 text-slate-300 text-sm">就地警告</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {propulsionSpecs.map((spec, index) => {
-                      // 检查当前值是否在告警范围
-                      const getCurrentValue = () => {
-                        switch (spec.item) {
-                          case '左电机电压': return propulsionMetrics.leftVoltage;
-                          case '右电机电压': return propulsionMetrics.rightVoltage;
-                          case '左电机转速': return propulsionMetrics.leftRpm;
-                          case '右电机转速': return propulsionMetrics.rightRpm;
-                          case '左电机温度': return propulsionMetrics.leftTemp;
-                          case '右电机温度': return propulsionMetrics.rightTemp;
-                          default: return 0;
-                        }
-                      };
-
-                      const currentValue = getCurrentValue();
-                      let isAlert = false;
-
-                      if ((spec.item.includes('左电机温度') && currentValue > 75) ||
-                        (spec.item.includes('右电机温度') && currentValue > 75)) {
-                        isAlert = true;
-                      }
-
-                      return (
-                        <tr
-                          key={index}
-                          className={`border-b border-slate-700/50 ${isAlert ? 'bg-amber-500/10' : 'hover:bg-slate-900/30'
-                            }`}
-                        >
-                          <td className="py-3 px-3 text-slate-300 text-sm">{spec.item}</td>
-                          <td className="py-3 px-3 text-slate-400 text-sm">{spec.unit}</td>
-                          <td className="py-3 px-3 text-amber-400 text-sm">{spec.threshold}</td>
-                          <td className="py-3 px-3 text-cyan-400 text-sm">{spec.action}</td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.cockpitDisplay} disabled />
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.cockpitWarning} disabled />
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.localDisplay} disabled />
-                          </td>
-                          <td className="py-3 px-3 text-center">
-                            <Checkbox checked={spec.localWarning} disabled />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
+  // 初始化加载状态
+  if (isInitializing) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900/20 to-gray-900 p-6">
+        <div className="max-w-7xl mx-auto">
+          <div className="flex flex-col items-center justify-center h-[60vh]">
+            <Loader2 className="w-16 h-16 text-blue-400 animate-spin mb-4" />
+            <p className="text-slate-300 text-lg font-medium">正在初始化监控系统...</p>
           </div>
         </div>
       </div>
+    );
+  }
+
+  // 正常页面渲染
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900/20 to-gray-900 p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* ====================================================================== */}
+        {/* 顶部区域：面包屑导航 + 页面标题 + 连接状态 */}
+        {/* ====================================================================== */}
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3 }}
+          className="mb-8"
+        >
+          {/* 面包屑导航 */}
+          <Breadcrumbs />
+
+          {/* 页面标题 + 连接状态 */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-purple-500 to-purple-600 flex items-center justify-center">
+                <Gauge className="w-7 h-7 text-white" />
+              </div>
+              <div>
+                <h1 className="text-3xl font-bold text-white">{PAGE_TITLE}</h1>
+                <p className="text-sm text-slate-300 mt-1 font-medium italic">左右双推进电机实时监控与管理</p>
+              </div>
+            </div>
+
+            {/* 连接状态已移至 TopBar */}
+          </div>
+        </motion.div>
+
+        {/* ====================================================================== */}
+        {/* 中部区域：左右双栏监控墙 */}
+        {/* ====================================================================== */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* 左推进电机监控墙 */}
+          <motion.div
+            initial={{ opacity: 0, x: -20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3, delay: 0.1 }}
+          >
+            <MonitoringWall
+              equipmentId={LEFT_PROPULSION_EQUIPMENT_ID}
+              title="左推进电机"
+              columnCount={{ desktop: 2, tablet: 2, mobile: 1 }}
+              className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50"
+            />
+          </motion.div>
+
+          {/* 右推进电机监控墙 */}
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.3, delay: 0.2 }}
+          >
+            <MonitoringWall
+              equipmentId={RIGHT_PROPULSION_EQUIPMENT_ID}
+              title="右推进电机"
+              columnCount={{ desktop: 2, tablet: 2, mobile: 1 }}
+              className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50"
+            />
+          </motion.div>
+        </div>
+
+        {/* ====================================================================== */}
+        {/* 底部区域：专属告警区 */}
+        {/* ====================================================================== */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+        >
+          <DedicatedAlarmZone
+            equipmentIds={[LEFT_PROPULSION_EQUIPMENT_ID, RIGHT_PROPULSION_EQUIPMENT_ID]}
+            maxItems={10}
+            className="bg-gray-800/50 backdrop-blur-sm rounded-xl p-6 border border-gray-700/50"
+          />
+        </motion.div>
+
+        {/* ====================================================================== */}
+        {/* 页脚提示 */}
+        {/* ====================================================================== */}
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
+          className="mt-8 text-center text-sm text-slate-300/90 font-bold"
+        >
+          <p className="flex items-center justify-center gap-2 tracking-widest uppercase">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+            数据每秒自动更新 · 无需手动刷新
+          </p>
+        </motion.div>
+      </div>
     </div>
   );
-}
+};
+
+// ============================================================================
+// 默认导出
+// ============================================================================
+
+export default PropulsionMonitoringPage;

@@ -29,9 +29,12 @@
     "test:migration:run": "npm run typeorm -- migration:run -d test-data-source.ts",
     "test:migration:revert": "npm run typeorm -- migration:revert -d test-data-source.ts",
     "test:migration:show": "npm run typeorm -- migration:show -d test-data-source.ts",
-    "test:schema:drop": "npm run typeorm -- schema:drop -d test-data-source.ts"
+    "test:schema:drop": "npm run typeorm -- schema:drop -d test-data-source.ts",
+    "seed:customer-rules": "ts-node scripts/seed-customer-rules.ts",
+    "seed:monitoring-points": "ts-node scripts/seed-monitoring-points.ts"
   },
   "dependencies": {
+    "@nestjs/axios": "^4.0.1",
     "@nestjs/common": "^11.0.1",
     "@nestjs/config": "^4.0.2",
     "@nestjs/core": "^11.0.1",
@@ -44,6 +47,7 @@
     "@nestjs/websockets": "^11.1.9",
     "@types/multer": "^2.0.0",
     "@types/papaparse": "^5.5.0",
+    "axios": "^1.13.2",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.2",

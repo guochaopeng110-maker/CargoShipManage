@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 电抗器线圈 -->
+  <path d="M6 12 Q6 8 8 8 Q10 8 10 12 Q10 16 8 16 Q6 16 6 12" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <path d="M10 12 Q10 8 12 8 Q14 8 14 12 Q14 16 12 16 Q10 16 10 12" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <path d="M14 12 Q14 8 16 8 Q18 8 18 12 Q18 16 16 16 Q14 16 14 12" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <!-- 铁芯 -->
+  <rect x="7" y="9.5" width="10" height="5" fill="currentColor" opacity="0.2"/>
+  <!-- 温度计 -->
+  <circle cx="20" cy="15" r="1.5" fill="currentColor"/>
+  <rect x="19.5" y="8" width="1" height="7" fill="currentColor"/>
+</svg>

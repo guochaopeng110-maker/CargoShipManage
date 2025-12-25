@@ -43,9 +43,16 @@ import { Skeleton } from './ui/skeleton';
 // 状态管理钩子导入
 import { useAlarmsStore } from '../stores/alarms-store';
 import { usePermissions } from '../hooks/usePermissions';
+import { PERMISSION_RESOURCES, PERMISSION_ACTIONS } from '../config/permissions';
 
+// 类型导入 - 直接从 API 客户端导入（完全对齐后端接口）
 // 类型导入
-import { Alarm, AlertSeverity, AlarmStatus } from '../types/alarms';
+import { AlarmRecord } from '@/services/api';
+import { Alarm } from '../stores/alarms-store';
+const AlertSeverity = AlarmRecord.severity;
+type AlertSeverity = AlarmRecord.severity;
+const AlarmStatus = AlarmRecord.status;
+type AlarmStatus = AlarmRecord.status;
 
 // 图标组件导入
 import {
@@ -64,7 +71,8 @@ import {
   RefreshCw,
   Cpu,
   MapPin,
-  ArrowRight
+  ArrowRight,
+  Shield
 } from 'lucide-react';
 
 /**
@@ -81,11 +89,11 @@ export function AlertCenterPage() {
   // ===== 路由和权限管理 =====
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  
+
   // 权限检查
   const { hasPermission } = usePermissions();
-  const canReadAlert = hasPermission('alert', 'read');
-  const canUpdateAlert = hasPermission('alert', 'update');
+  const canReadAlert = hasPermission(PERMISSION_RESOURCES.ALERT, PERMISSION_ACTIONS.READ);
+  const canUpdateAlert = hasPermission(PERMISSION_RESOURCES.ALERT, PERMISSION_ACTIONS.UPDATE);
 
   // ===== 告警Store状态管理 =====
   const {
@@ -97,7 +105,7 @@ export function AlertCenterPage() {
     page,
     pageSize,
     totalPages,
-    
+
     // 操作方法
     fetchAlarms,
     acknowledgeAlarm,
@@ -157,9 +165,9 @@ export function AlertCenterPage() {
   const filteredAlarms = useMemo(() => {
     return alarms.filter(alarm => {
       // 搜索过滤
-      const matchesSearch = searchTerm === '' || 
-        alarm.message.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        alarm.equipmentName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      const matchesSearch = searchTerm === '' ||
+        (alarm.message?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
+        (alarm.equipmentName?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false) ||
         alarm.equipmentId.toLowerCase().includes(searchTerm.toLowerCase());
 
       // 严重程度过滤（支持多选）
@@ -169,7 +177,7 @@ export function AlertCenterPage() {
       const matchesStatus = filters.status.length === 0 || filters.status.includes(alarm.status);
 
       // 设备过滤
-      const matchesEquipment = filters.equipmentId === '' || 
+      const matchesEquipment = filters.equipmentId === '' ||
         alarm.equipmentId.toLowerCase().includes(filters.equipmentId.toLowerCase());
 
       // 时间范围过滤
@@ -269,10 +277,10 @@ export function AlertCenterPage() {
           await ignoreAlarm(alarm.id, note || '用户忽略');
           break;
       }
-      
+
       // 刷新数据
       await loadAlarms();
-      
+
       // 关闭对话框
       setActionDialog({ open: false, alarm: null, action: 'acknowledge' });
     } catch (error) {
@@ -386,13 +394,13 @@ export function AlertCenterPage() {
 
   if (!canReadAlert) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <Alert className="max-w-md">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>
-            您没有权限访问告警中心页面。请联系管理员获取相应权限。
-          </AlertDescription>
-        </Alert>
+      <div className="min-h-full bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-6">
+        <Card className="max-w-md mx-auto mt-20 p-6 bg-slate-800 border-slate-700">
+          <Alert className="bg-red-900/20 border-red-600/50">
+            <Shield className="h-4 w-4" />
+            <AlertDescription>您没有权限查看告警中心页面，请联系系统管理员</AlertDescription>
+          </Alert>
+        </Card>
       </div>
     );
   }
@@ -542,9 +550,9 @@ export function AlertCenterPage() {
               <Calendar
                 mode="single"
                 selected={filters.startTime}
-                onSelect={(date) => setFilters(prev => ({ 
-                  ...prev, 
-                  startTime: date 
+                onSelect={(date) => setFilters(prev => ({
+                  ...prev,
+                  startTime: date
                 }))}
                 className="text-slate-200"
               />
@@ -567,9 +575,9 @@ export function AlertCenterPage() {
               <Calendar
                 mode="single"
                 selected={filters.endTime}
-                onSelect={(date) => setFilters(prev => ({ 
-                  ...prev, 
-                  endTime: date 
+                onSelect={(date) => setFilters(prev => ({
+                  ...prev,
+                  endTime: date
                 }))}
                 className="text-slate-200"
               />
@@ -621,7 +629,7 @@ export function AlertCenterPage() {
               {filteredAlarms.map((alarm, index) => {
                 const severityConfig = getSeverityConfig(alarm.severity);
                 const Icon = severityConfig.icon;
-                const timeInfo = formatTime(alarm.triggeredAt);
+                const timeInfo = formatTime(Date.parse(alarm.triggeredAt));
 
                 return (
                   <div
@@ -637,12 +645,11 @@ export function AlertCenterPage() {
                             <Badge className={`${severityConfig.bg} ${severityConfig.color} border-0 px-2 py-0.5 text-xs`}>
                               {severityConfig.label}
                             </Badge>
-                            <Badge className={`text-xs ${
-                              alarm.status === AlarmStatus.PENDING ? 'bg-red-500/20 text-red-400 border-red-500' :
+                            <Badge className={`text-xs ${alarm.status === AlarmStatus.PENDING ? 'bg-red-500/20 text-red-400 border-red-500' :
                               alarm.status === AlarmStatus.PROCESSING ? 'bg-yellow-500/20 text-yellow-400 border-yellow-500' :
-                              alarm.status === AlarmStatus.RESOLVED ? 'bg-green-500/20 text-green-400 border-green-500' :
-                              'bg-slate-500/20 text-slate-400 border-slate-500'
-                            }`}>
+                                alarm.status === AlarmStatus.RESOLVED ? 'bg-green-500/20 text-green-400 border-green-500' :
+                                  'bg-slate-500/20 text-slate-400 border-slate-500'
+                              }`}>
                               {alarm.status === AlarmStatus.PENDING && '待处理'}
                               {alarm.status === AlarmStatus.PROCESSING && '处理中'}
                               {alarm.status === AlarmStatus.RESOLVED && '已解决'}
@@ -652,7 +659,7 @@ export function AlertCenterPage() {
                           </div>
 
                           <h4 className="text-slate-200 font-medium mb-1">{alarm.message}</h4>
-                          
+
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                             <div className="flex items-center gap-2">
                               <Cpu className="w-3 h-3 text-slate-400" />
@@ -676,10 +683,10 @@ export function AlertCenterPage() {
                             </div>
                           </div>
 
-                          {alarm.handlerNote && (
+                          {alarm.handleNote && (
                             <div className="mt-2 p-2 bg-slate-800/50 rounded border border-slate-600">
                               <p className="text-slate-300 text-sm">
-                                <span className="text-slate-400">处理记录:</span> {alarm.handlerNote}
+                                <span className="text-slate-400">处理记录:</span> {alarm.handleNote}
                               </p>
                             </div>
                           )}
@@ -732,16 +739,16 @@ export function AlertCenterPage() {
                               </div>
                               <div>
                                 <span className="text-slate-400">告警消息:</span>
-                                <p className="text-slate-200 mt-1">{alarm.message}</p>
+                                <p className="text-slate-200 mt-1">{alarm.message || alarm.faultName || '无详细信息'}</p>
                               </div>
                               <div>
                                 <span className="text-slate-400">设备名称:</span>
-                                <p className="text-slate-200 mt-1">{alarm.equipmentName}</p>
+                                <p className="text-slate-200 mt-1">{alarm.equipmentName || '未知设备'}</p>
                               </div>
-                              {alarm.handlerNote && (
+                              {alarm.handleNote && (
                                 <div>
                                   <span className="text-slate-400">处理记录:</span>
-                                  <p className="text-slate-200 mt-1">{alarm.handlerNote}</p>
+                                  <p className="text-slate-200 mt-1">{alarm.handleNote}</p>
                                 </div>
                               )}
                             </div>
@@ -759,7 +766,7 @@ export function AlertCenterPage() {
                             <CheckCircle className="w-4 h-4" />
                           </Button>
                         )}
-                        
+
                         {canUpdateAlert && (alarm.status === AlarmStatus.PENDING || alarm.status === AlarmStatus.PROCESSING) && (
                           <Button
                             size="sm"
@@ -770,7 +777,7 @@ export function AlertCenterPage() {
                             <CheckCircle className="w-4 h-4" />
                           </Button>
                         )}
-                        
+
                         {canUpdateAlert && alarm.status === AlarmStatus.PENDING && (
                           <Button
                             size="sm"
@@ -824,7 +831,7 @@ export function AlertCenterPage() {
       </Card>
 
       {/* 操作确认对话框 */}
-      <AlertDialog open={actionDialog.open} onOpenChange={(open) => 
+      <AlertDialog open={actionDialog.open} onOpenChange={(open) =>
         setActionDialog(prev => ({ ...prev, open }))
       }>
         <AlertDialogContent className="bg-slate-800 border-slate-700">
@@ -837,7 +844,7 @@ export function AlertCenterPage() {
             <AlertDialogDescription className="text-slate-300">
               {actionDialog.alarm && (
                 <div>
-                  <p>您确定要{actionDialog.action === 'acknowledge' ? '确认' : 
+                  <p>您确定要{actionDialog.action === 'acknowledge' ? '确认' :
                     actionDialog.action === 'resolve' ? '解决' : '忽略'}以下告警吗？</p>
                   <div className="mt-2 p-2 bg-slate-900/50 rounded border border-slate-600">
                     <p className="text-slate-200">{actionDialog.alarm.message}</p>

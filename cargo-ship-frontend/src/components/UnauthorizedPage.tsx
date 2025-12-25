@@ -4,8 +4,7 @@
 import React, { ReactNode } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../stores/auth-store';
-import { usePermissions } from '../hooks/usePermissions';
-import { PermissionValidationResult } from '../utils/permissions';
+import { usePermissions, PermissionValidationResult } from '../hooks/usePermissions';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Button } from './ui/button';
 import { Alert, AlertDescription } from './ui/alert';

@@ -1,0 +1,91 @@
+/**
+ * 货船智能机舱管理系统 - 权限配置常量
+ * 
+ * 本模块定义了系统所有的权限资源、操作和角色，旨在：
+ * 1. 消除代码中的魔法字符串（Magic Strings）
+ * 2. 提供类型安全的权限判定
+ * 3. 统一前后端权限标识符
+ * 
+ * 数据参考：src/services/api/models/Permission.ts
+ */
+
+import { Permission } from '@/services/api';
+
+/**
+ * 资源类型常量
+ * 对应后端 Permission.resource
+ */
+export const PERMISSION_RESOURCES = Permission.resource;
+
+/**
+ * 操作类型常量
+ * 对应后端 Permission.action
+ */
+export const PERMISSION_ACTIONS = Permission.action;
+
+/**
+ * 系统角色常量
+ */
+export const ROLES = {
+    ADMIN: 'administrator', // 超级管理员
+    OPERATOR: 'operator',    // 运行操作员
+    VIEWER: 'viewer',        // 普通查看者
+} as const;
+
+/**
+ * 核心对象权限常量定义
+ * 格式推荐使用：RESOURCES.ACTION
+ */
+export const PERMISSIONS = {
+    // 用户管理
+    USER: {
+        READ: `${PERMISSION_RESOURCES.USER}:${PERMISSION_ACTIONS.READ}`,
+        CREATE: `${PERMISSION_RESOURCES.USER}:${PERMISSION_ACTIONS.CREATE}`,
+        UPDATE: `${PERMISSION_RESOURCES.USER}:${PERMISSION_ACTIONS.UPDATE}`,
+        DELETE: `${PERMISSION_RESOURCES.USER}:${PERMISSION_ACTIONS.DELETE}`,
+        MANAGE: `${PERMISSION_RESOURCES.USER}:${PERMISSION_ACTIONS.MANAGE}`,
+    },
+
+    // 设备管理
+    DEVICE: {
+        READ: `${PERMISSION_RESOURCES.DEVICE}:${PERMISSION_ACTIONS.READ}`,
+        CREATE: `${PERMISSION_RESOURCES.DEVICE}:${PERMISSION_ACTIONS.CREATE}`,
+        UPDATE: `${PERMISSION_RESOURCES.DEVICE}:${PERMISSION_ACTIONS.UPDATE}`,
+        DELETE: `${PERMISSION_RESOURCES.DEVICE}:${PERMISSION_ACTIONS.DELETE}`,
+        MANAGE: `${PERMISSION_RESOURCES.DEVICE}:${PERMISSION_ACTIONS.MANAGE}`,
+    },
+
+    // 告警管理
+    ALERT: {
+        READ: `${PERMISSION_RESOURCES.ALERT}:${PERMISSION_ACTIONS.READ}`,
+        UPDATE: `${PERMISSION_RESOURCES.ALERT}:${PERMISSION_ACTIONS.UPDATE}`,
+        DELETE: `${PERMISSION_RESOURCES.ALERT}:${PERMISSION_ACTIONS.DELETE}`,
+        EXPORT: `${PERMISSION_RESOURCES.ALERT}:${PERMISSION_ACTIONS.EXPORT}`,
+    },
+
+    // 报表管理
+    REPORT: {
+        READ: `${PERMISSION_RESOURCES.REPORT}:${PERMISSION_ACTIONS.READ}`,
+        CREATE: `${PERMISSION_RESOURCES.REPORT}:${PERMISSION_ACTIONS.CREATE}`,
+        DELETE: `${PERMISSION_RESOURCES.REPORT}:${PERMISSION_ACTIONS.DELETE}`,
+        EXPORT: `${PERMISSION_RESOURCES.REPORT}:${PERMISSION_ACTIONS.EXPORT}`,
+    },
+
+    // 传感器数据/监测数据
+    SENSOR_DATA: {
+        READ: `${PERMISSION_RESOURCES.SENSOR_DATA}:${PERMISSION_ACTIONS.READ}`,
+        EXPORT: `${PERMISSION_RESOURCES.SENSOR_DATA}:${PERMISSION_ACTIONS.EXPORT}`,
+        IMPORT: `${PERMISSION_RESOURCES.SENSOR_DATA}:${PERMISSION_ACTIONS.IMPORT}`,
+    },
+
+    // 系统配置
+    SYSTEM_CONFIG: {
+        READ: `${PERMISSION_RESOURCES.SYSTEM_CONFIG}:${PERMISSION_ACTIONS.READ}`,
+        UPDATE: `${PERMISSION_RESOURCES.SYSTEM_CONFIG}:${PERMISSION_ACTIONS.UPDATE}`,
+    },
+
+    // 审计日志
+    AUDIT_LOG: {
+        READ: `${PERMISSION_RESOURCES.AUDIT_LOG}:${PERMISSION_ACTIONS.READ}`,
+    },
+} as const;

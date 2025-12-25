@@ -1,795 +1,1063 @@
-// 数据导入状态管理（对应后端ImportRecord实体）
-// 基于货船智能机舱管理系统数据导入架构
-// 
-// 功能说明：
-// - 基于后端API契约实现完整的数据导入状态管理
-// - 支持文件上传、验证、转换的完整流程
-// - 包含批量导入、作业管理、模板管理
-// - 实时WebSocket更新和性能监控
-// - 完整的错误处理和重试机制
+/**
+ * 货船智能机舱管理系统 - 数据导入状态管理
+ *
+ * 职责：
+ * 1. 管理数据导入记录的全局状态
+ * 2. 处理文件上传和导入执行操作
+ * 3. 管理分页、筛选和排序状态
+ * 4. 封装 import-service API 调用
+ *
+ * 架构：
+ * - State: 纯数据状态 (records, loading, uploadProgress...)
+ * - Actions: 业务逻辑 (uploadFile, fetchRecords, executeImport...)
+ *
+ * @module stores/import-store
+ */
 
-import {
-  ImportRecord,
-  ImportRecordFilters,
-  DataImportRequest,
-  ImportPreviewData,
-  ImportTemplate,
-  ImportJob,
-  ImportJobStatus,
-  BatchImportJob,
-  ImportStatistics,
-  ImportHistoryStatistics,
-  FileFormat,
-  DuplicateHandling,
-} from '../types/import';
-import { DataQuality } from '../types/equipment';
-import { importService } from '../services/import-service';
+import { create } from 'zustand';
+
+// 从后端 API 客户端导入基础类型和服务
+import { ImportRecord, Service, ImportDataDto } from '@/services/api';
+
+// 从监控服务导入数据质量枚举（使用后端 API 定义）
+import { DataQuality } from './monitoring-store';
+
+// ==================== 前端业务逻辑类型定义 ====================
+
+/**
+ * 导入记录筛选条件
+ *
+ * 用于查询导入记录列表时的筛选参数
+ */
+export interface ImportRecordFilters {
+  equipmentId?: string;                          // 设备ID筛选
+  status?: ImportRecord.status[];                // 导入状态筛选
+  fileFormat?: ImportRecord.fileFormat[];        // 文件格式筛选
+  startTime?: number;                            // 开始时间（时间戳）
+  endTime?: number;                              // 结束时间（时间戳）
+  importedBy?: string;                           // 导入人筛选
+  fileName?: string;                             // 文件名筛选
+}
+
+/**
+ * 数据导入请求
+ *
+ * 用于文件上传和导入操作的请求参数
+ */
+export interface DataImportRequest {
+  file: File;                                    // 上传的文件对象
+  equipmentId?: string;                          // 目标设备ID（可选）
+  fileFormat?: 'excel' | 'csv';                  // 文件格式
+  duplicateStrategy?: 'skip' | 'overwrite';      // 重复数据处理策略
+  skipInvalidRows?: boolean;                     // 是否跳过无效行
+  remarks?: string;                              // 备注信息
+}
+
+/**
+ * 导入统计信息
+ *
+ * 导入操作的统计数据
+ */
+export interface ImportStatistics {
+  dataQualityDistribution: {
+    [key in DataQuality]: number;                // 数据质量分布
+  };
+  equipmentDistribution: Record<string, number>; // 设备分布
+  metricTypeDistribution: Record<string, number>; // 指标类型分布
+  timeRange: {
+    earliest: number;                            // 最早时间戳
+    latest: number;                              // 最晚时间戳
+  };
+  valueRange: {
+    min: number;                                 // 最小值
+    max: number;                                 // 最大值
+    mean: number;                                // 平均值
+  };
+}
+
+/**
+ * 导入预览数据
+ *
+ * 文件上传后的数据预览
+ */
+export interface ImportPreviewData {
+  headers: string[];                             // 文件表头
+  rows: any[][];                                 // 预览数据行（前N行）
+  totalRows: number;                             // 文件总行数
+  detectedFormat: ImportRecord.fileFormat;       // 检测到的文件格式
+}
 
 /**
  * 数据导入状态接口
- * 
- * 定义前端数据导入状态管理的完整数据结构
- * 对应后端ImportRecord实体和相关业务逻辑
+ *
+ * 定义数据导入功能的所有数据状态
  */
 export interface ImportState {
   // 核心数据
-  records: ImportRecord[];          // 导入记录列表
-  currentRecord: ImportRecord | null; // 当前激活的记录
-  
+  /** 导入记录列表 */
+  records: ImportRecord[];
+
+  /** 当前选中的导入记录 */
+  currentRecord: ImportRecord | null;
+
   // 状态管理
-  uploading: boolean;               // 文件上传中
-  importing: boolean;               // 数据导入中
-  loading: boolean;                 // 列表加载中
-  processing: boolean;              // 数据处理中
-  error: string | null;             // 错误信息
-  lastUpdate: number;               // 最后更新时间
-  
+  /** 是否正在加载数据 */
+  loading: boolean;
+
+  /** 是否正在上传文件 */
+  uploading: boolean;
+
+  /** 是否正在执行导入 */
+  importing: boolean;
+
+  /** 是否正在处理数据 */
+  processing: boolean;
+
+  /** 错误信息 */
+  error: string | null;
+
+  /** 最后更新时间戳 */
+  lastUpdate: number;
+
   // 文件上传状态
-  uploadProgress: number;           // 上传进度百分比
-  uploadStatus: 'idle' | 'uploading' | 'success' | 'error'; // 上传状态
-  currentUploadFile: File | null;   // 当前上传文件
-  
-  // 预览数据管理
-  previewData: ImportPreviewData | null; // 文件预览数据
-  showPreview: boolean;             // 是否显示预览对话框
-  previewValidationErrors: any[];   // 预览验证错误
-  
+  /** 上传进度百分比 (0-100) */
+  uploadProgress: number;
+
+  /** 上传状态 */
+  uploadStatus: 'idle' | 'uploading' | 'success' | 'error';
+
+  /** 当前正在上传的文件 */
+  currentUploadFile: File | null;
+
+  // ===== 新增：当前任务状态（三步走流程） =====
+  /**
+   * 当前导入任务状态
+   *
+   * 用于追踪从文件选择到处理完成的完整流程
+   */
+  currentTask: {
+    /** 上传进度 (0-100) */
+    uploadProgress: number;
+    /** 导入状态：idle(等待) | uploading(上传中) | processing(处理中) | success(成功) | error(失败) */
+    importStatus: 'idle' | 'uploading' | 'processing' | 'success' | 'error';
+    /** 当前任务 ID（上传成功后由后端返回） */
+    taskId: string | null;
+    /** 当前文件名 */
+    fileName: string | null;
+    /** 错误信息（如果失败） */
+    errorMessage: string | null;
+  };
+
+  // ===== 新增：历史记录状态（遵循 DataQueryPage 模式） =====
+  /**
+   * 历史导入记录状态
+   *
+   * 用于查询、筛选、分页显示历史导入任务
+   */
+  historicalImports: {
+    /** 导入记录项目列表 */
+    items: ImportRecord[];
+    /** 总记录数 */
+    total: number;
+    /** 当前页码 */
+    page: number;
+    /** 每页大小 */
+    pageSize: number;
+    /** 总页数 */
+    totalPages: number;
+  };
+
+  // ===== 新增：查询状态 =====
+  /** 历史记录查询状态 */
+  queryStatus: 'idle' | 'loading' | 'success' | 'error';
+
+  /** 查询筛选条件 */
+  queryFilters: ImportRecordFilters;
+
+  // ===== 新增：轮询控制 =====
+  /** 轮询任务状态的 AbortController（用于取消轮询） */
+  pollingAbortController: AbortController | null;
+
   // 筛选和排序
-  filters: ImportRecordFilters;     // 当前筛选条件
-  sortBy: 'uploadTime' | 'status' | 'fileName' | 'fileSize' | 'duration'; // 排序字段
-  sortOrder: 'asc' | 'desc';        // 排序方向
-  
+  /** 筛选条件 */
+  filters: ImportRecordFilters;
+
+  /** 排序字段 */
+  sortBy: 'uploadTime' | 'status' | 'fileName' | 'fileSize';
+
+  /** 排序方向 */
+  sortOrder: 'asc' | 'desc';
+
   // 分页
-  page: number;                     // 当前页码
-  pageSize: number;                 // 每页大小
-  total: number;                    // 总记录数
-  totalPages: number;               // 总页数
-  
-  // 导入作业管理
-  activeJobs: Map<string, ImportJob>;      // 活跃作业映射
-  jobProgress: Map<string, number>;        // 作业进度映射
-  jobStatus: Map<string, ImportJobStatus>; // 作业状态映射
-  
-  // 批量导入管理
-  batchJobs: BatchImportJob[];      // 批量导入作业列表
-  activeBatchJob: BatchImportJob | null; // 当前活跃的批量作业
-  batchProgress: number;            // 批量作业总体进度
-  
-  // 模板管理
-  templates: ImportTemplate[];      // 导入模板列表
-  currentTemplate: ImportTemplate | null; // 当前选择的模板
-  templateValidation: {
-    isValid: boolean;
-    errors: string[];
-  };
-  
+  /** 当前页码 */
+  page: number;
+
+  /** 每页大小 */
+  pageSize: number;
+
+  /** 总记录数 */
+  total: number;
+
+  /** 总页数 */
+  totalPages: number;
+
   // 统计数据
-  statistics: ImportStatistics | null;     // 当前统计
-  historyStatistics: ImportHistoryStatistics | null; // 历史统计数据
-  trendData: {                              // 趋势数据
-    dailyImports: number[];
-    successRate: number[];
-    lastUpdated: number;
-  };
-  
-  // 性能监控
-  performanceMetrics: {
-    averageImportTime: number;   // 平均导入时间
-    importRate: number;          // 导入速率（行/秒）
-    errorRate: number;           // 错误率
-    cacheHitRate: number;        // 缓存命中率
-  };
-  
-  // 缓存管理
-  cache: {
-    lastFetch: number;           // 最后获取时间
-    cacheTimeout: number;        // 缓存超时（5分钟）
-    data: Map<string, any>;      // 缓存数据映射
-  };
-  
-  // WebSocket连接状态
-  websocketStatus: 'disconnected' | 'connecting' | 'connected';
-  realtimeUpdates: boolean;      // 是否启用实时更新
-  
-  // 重复数据处理策略
-  duplicateHandling: DuplicateHandling; // 默认重复处理策略
-  
-  // 导入配置
-  importConfig: {
-    maxFileSize: number;         // 最大文件大小
-    allowedFormats: FileFormat[]; // 允许的文件格式
-    maxRowsPerFile: number;      // 每文件最大行数
-    batchSize: number;           // 批处理大小
-  };
+  /** 导入统计信息 */
+  statistics: ImportStatistics | null;
+
+  // 预览功能
+  /** 文件预览数据 */
+  previewData: ImportPreviewData | null;
+
+  /** 是否显示预览对话框 */
+  showPreview: boolean;
 }
 
 /**
  * 数据导入操作接口
- * 
- * 定义数据导入相关的所有操作方法
+ *
+ * 定义数据导入功能的所有业务操作
  */
 export interface ImportActions {
-  // === 文件上传操作 ===
-  uploadFile: (request: DataImportRequest) => Promise<ImportRecord>;
-  uploadFileWithProgress: (request: DataImportRequest, onProgress?: (progress: number) => void) => Promise<ImportRecord>;
-  cancelUpload: () => void;
-  
-  // === 预览操作 ===
-  previewFile: (file: File, equipmentId?: string) => Promise<ImportPreviewData>;
-  clearPreview: () => void;
-  showPreviewDialog: () => void;
-  hidePreviewDialog: () => void;
-  validatePreviewData: () => { isValid: boolean; errors: string[] };
-  
-  // === 导入执行操作 ===
-  executeImport: (recordId: string, options?: any) => Promise<ImportRecord>;
-  executeBatchImport: (batchJob: BatchImportJob) => Promise<void>;
-  cancelImport: (recordId: string) => Promise<void>;
-  retryImport: (recordId: string) => Promise<ImportRecord>;
-  
-  // === 作业管理 ===
-  getImportJobs: (recordId: string) => Promise<ImportJob[]>;
-  pauseJob: (jobId: string) => Promise<void>;
-  resumeJob: (jobId: string) => Promise<void>;
-  cancelJob: (jobId: string) => Promise<void>;
-  
-  // === 查询操作 ===
-  getRecords: (params?: { 
-    page?: number; 
-    pageSize?: number; 
-    filters?: ImportRecordFilters;
-    sortBy?: ImportState['sortBy'];
-    sortOrder?: ImportState['sortOrder'];
-  }) => Promise<{ 
-    items: ImportRecord[]; 
-    total: number; 
-    page: number; 
-    pageSize: number; 
-    totalPages: number;
-  }>;
-  getRecord: (recordId: string) => Promise<ImportRecord>;
-  getStatistics: () => Promise<ImportStatistics>;
-  getHistoryStatistics: (period: { start: number; end: number }) => Promise<ImportHistoryStatistics>;
-  
-  // === 模板管理 ===
-  getTemplates: () => Promise<ImportTemplate[]>;
-  getTemplate: (templateId: string) => Promise<ImportTemplate>;
-  createTemplate: (template: Omit<ImportTemplate, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>) => Promise<ImportTemplate>;
-  updateTemplate: (templateId: string, updates: Partial<ImportTemplate>) => Promise<ImportTemplate>;
-  deleteTemplate: (templateId: string) => Promise<void>;
-  selectTemplate: (template: ImportTemplate) => void;
-  
-  // === 状态管理 ===
-  setLoading: (loading: boolean) => void;
-  setError: (error: string | null) => void;
-  clearError: () => void;
-  refresh: () => Promise<void>;
-  refreshStatistics: () => Promise<void>;
-  reset: () => void;
-  
-  // === 筛选和排序 ===
-  setFilters: (filters: Partial<ImportRecordFilters>) => void;
-  clearFilters: () => void;
-  setSorting: (sortBy: ImportState['sortBy'], sortOrder: ImportState['sortOrder']) => void;
-  resetFilters: () => void;
-  
-  // === 分页操作 ===
-  goToPage: (page: number) => void;
-  goToNextPage: () => void;
-  goToPreviousPage: () => void;
-  changePageSize: (pageSize: number) => void;
-  
-  // === 实时更新 ===
-  subscribeToUpdates: () => void;
-  unsubscribeFromUpdates: () => void;
-  handleWebSocketMessage: (message: any) => void;
-  reconnectWebSocket: () => void;
-  
-  // === 缓存管理 ===
-  clearCache: () => void;
-  invalidateCache: (key: string) => void;
-  getCachedData: <T>(key: string) => T | null;
-  setCachedData: <T>(key: string, data: T, ttl?: number) => void;
-  
-  // === 性能监控 ===
-  recordPerformanceMetric: (metric: string, value: number) => void;
-  getPerformanceReport: () => any;
-  resetPerformanceMetrics: () => void;
-  
-  // === 配置管理 ===
-  updateImportConfig: (config: Partial<ImportState['importConfig']>) => void;
-  setDuplicateHandling: (handling: DuplicateHandling) => void;
-  
-  // === 工具方法 ===
-  calculateSuccessRate: () => number;
-  formatFileSize: (bytes: number) => string;
-  getStatusColor: (status: string) => string;
-  exportRecords: (format: 'csv' | 'excel') => Promise<void>;
-}
+  // ===== 文件上传操作 =====
 
-/**
- * 数据导入状态管理Store
- * 
- * 实现完整的数据导入状态管理功能
- * 对应后端ImportRecord实体和相关API
- */
-class ImportStore implements ImportState, ImportActions {
-  // === 核心数据状态 ===
-  records: ImportRecord[] = [];
-  currentRecord: ImportRecord | null = null;
-  
-  // === 状态管理 ===
-  uploading = false;
-  importing = false;
-  loading = false;
-  processing = false;
-  error: string | null = null;
-  lastUpdate = 0;
-  
-  // === 文件上传状态 ===
-  uploadProgress = 0;
-  uploadStatus: ImportState['uploadStatus'] = 'idle';
-  currentUploadFile: File | null = null;
-  
-  // === 预览数据状态 ===
-  previewData: ImportPreviewData | null = null;
-  showPreview = false;
-  previewValidationErrors: any[] = [];
-  
-  // === 筛选和排序 ===
-  filters: ImportRecordFilters = {};
-  sortBy: ImportState['sortBy'] = 'uploadTime';
-  sortOrder: ImportState['sortOrder'] = 'desc';
-  
-  // === 分页状态 ===
-  page = 1;
-  pageSize = 10;
-  total = 0;
-  totalPages = 0;
-  
-  // === 作业管理 ===
-  activeJobs = new Map<string, ImportJob>();
-  jobProgress = new Map<string, number>();
-  jobStatus = new Map<string, ImportJobStatus>();
-  
-  // === 批量导入 ===
-  batchJobs: BatchImportJob[] = [];
-  activeBatchJob: BatchImportJob | null = null;
-  batchProgress = 0;
-  
-  // === 模板管理 ===
-  templates: ImportTemplate[] = [];
-  currentTemplate: ImportTemplate | null = null;
-  templateValidation = {
-    isValid: false,
-    errors: [] as string[],
-  };
-  
-  // === 统计数据 ===
-  statistics: ImportStatistics | null = null;
-  historyStatistics: ImportHistoryStatistics | null = null;
-  trendData = {
-    dailyImports: [],
-    successRate: [],
-    lastUpdated: 0,
-  };
-  
-  // === 性能监控 ===
-  performanceMetrics = {
-    averageImportTime: 0,
-    importRate: 0,
-    errorRate: 0,
-    cacheHitRate: 0,
-  };
-  
-  // === 缓存管理 ===
-  cache = {
-    lastFetch: 0,
-    cacheTimeout: 300000, // 5 minutes
-    data: new Map<string, any>(),
-  };
-  
-  // === WebSocket状态 ===
-  websocketStatus: ImportState['websocketStatus'] = 'disconnected';
-  realtimeUpdates = true;
-  
-  // === 配置 ===
-  duplicateHandling: DuplicateHandling = DuplicateHandling.SKIP;
-  importConfig = {
-    maxFileSize: 50 * 1024 * 1024, // 50MB
-    allowedFormats: [FileFormat.CSV, FileFormat.EXCEL, FileFormat.JSON, FileFormat.XML],
-    maxRowsPerFile: 100000,
-    batchSize: 1000,
-  };
-  
-  // === 私有方法 ===
-  
   /**
-   * 更新最后更新时间
+   * 上传文件
+   *
+   * @param request - 导入请求参数
+   * @returns Promise<ImportRecord> - 创建的导入记录
    */
-  private updateTimestamp(): void {
-    this.lastUpdate = Date.now();
-  }
-  
+  uploadFile: (request: DataImportRequest) => Promise<ImportRecord>;
+
   /**
-   * 标准化错误消息
+   * 上传文件（带进度回调）
+   *
+   * @param request - 导入请求参数
+   * @param onProgress - 进度回调函数
+   * @returns Promise<ImportRecord> - 创建的导入记录
    */
-  private normalizeError(error: any): string {
-    if (error?.message) {
-      return error.message;
-    }
-    if (typeof error === 'string') {
-      return error;
-    }
-    return '操作失败，请重试';
-  }
-  
-  /**
-   * 检查缓存是否有效
-   */
-  isCacheValid(): boolean {
-    return Date.now() - this.cache.lastFetch < this.cache.cacheTimeout;
-  }
-  
-  /**
-   * 计算成功概率
-   */
-  private calculateRecordSuccessRate(record: ImportRecord): number {
-    if (record.totalRows === 0) {
-      return 0;
-    }
-    return (record.successRows / record.totalRows) * 100;
-  }
-  
-  // === 文件上传操作实现 ===
-  
-  uploadFile = async (request: DataImportRequest): Promise<ImportRecord> => {
-    this.uploading = true;
-    this.setError(null);
-    
-    try {
-      this.uploadProgress = 0;
-      this.uploadStatus = 'uploading';
-      this.currentUploadFile = request.file;
-      
-      // 调用导入服务
-      const record = await importService.uploadFile(request);
-      
-      // 更新本地状态
-      this.records = [record, ...this.records];
-      this.total += 1;
-      this.currentRecord = record;
-      this.uploadProgress = 100;
-      this.uploadStatus = 'success';
-      this.currentUploadFile = null;
-      
-      this.updateTimestamp();
-      return record;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      this.uploadStatus = 'error';
-      this.uploadProgress = 0;
-      throw error;
-    } finally {
-      this.uploading = false;
-    }
-  }
-  
-  uploadFileWithProgress = async (
+  uploadFileWithProgress: (
     request: DataImportRequest,
     onProgress?: (progress: number) => void
-  ): Promise<ImportRecord> => {
-    this.uploading = true;
-    this.setError(null);
-    
-    try {
-      this.uploadProgress = 0;
-      this.uploadStatus = 'uploading';
-      
-      // 模拟上传进度
-      const progressInterval = setInterval(() => {
-        if (this.uploadProgress < 90) {
-          this.uploadProgress += 10;
-          onProgress?.(this.uploadProgress);
-        }
-      }, 200);
-      
-      const record = await importService.uploadFile(request);
-      
-      clearInterval(progressInterval);
-      this.uploadProgress = 100;
-      this.uploadStatus = 'success';
-      onProgress?.(100);
-      
-      // 更新状态
-      this.records = [record, ...this.records];
-      this.total += 1;
-      this.currentRecord = record;
-      this.updateTimestamp();
-      
-      return record;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      this.uploadStatus = 'error';
-      this.uploadProgress = 0;
-      throw error;
-    } finally {
-      this.uploading = false;
-      setTimeout(() => {
-        this.uploadStatus = 'idle';
-        this.currentUploadFile = null;
-      }, 2000);
-    }
-  }
-  
-  cancelUpload = (): void => {
-    this.uploading = false;
-    this.uploadProgress = 0;
-    this.uploadStatus = 'idle';
-    this.currentUploadFile = null;
-    this.setError('上传已取消');
-  }
-  
-  // === 预览操作实现 ===
-  
-  previewFile = async (file: File, equipmentId?: string): Promise<ImportPreviewData> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 创建FormData进行文件预览
-      const formData = new FormData();
-      formData.append('file', file);
-      if (equipmentId) {
-        formData.append('equipmentId', equipmentId);
-      }
-      
-      // 调用预览API（需要后端支持）
-      const response = await fetch('/api/import/preview', {
-        method: 'POST',
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        throw new Error(`预览失败: ${response.statusText}`);
-      }
-      
-      const previewData = await response.json();
-      this.previewData = previewData;
-      this.showPreview = true;
-      
-      this.updateTimestamp();
-      return previewData;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  clearPreview = (): void => {
-    this.previewData = null;
-    this.previewValidationErrors = [];
-    this.showPreview = false;
-  }
-  
-  showPreviewDialog = (): void => {
-    this.showPreview = true;
-  }
-  
-  hidePreviewDialog = (): void => {
-    this.showPreview = false;
-  }
-  
-  validatePreviewData = (): { isValid: boolean; errors: string[] } => {
-    if (!this.previewData) {
-      return { isValid: false, errors: ['没有预览数据'] };
-    }
-    
-    const errors: string[] = [];
-    
-    // 检查数据格式
-    if (!this.previewData.previewRows || this.previewData.previewRows.length === 0) {
-      errors.push('文件没有有效数据');
-    }
-    
-    // 检查验证错误
-    if (this.previewData.validationErrors && this.previewData.validationErrors.length > 0) {
-      errors.push(`发现 ${this.previewData.validationErrors.length} 个验证错误`);
-    }
-    
-    // 检查重复数据
-    if (this.previewData.duplicateCount > 0) {
-      errors.push(`发现 ${this.previewData.duplicateCount} 条重复数据`);
-    }
-    
-    const isValid = errors.length === 0;
-    this.templateValidation = { isValid, errors };
-    
-    return { isValid, errors };
-  }
-  
-  // === 导入执行操作实现 ===
-  
-  executeImport = async (recordId: string, options?: any): Promise<ImportRecord> => {
-    this.importing = true;
-    this.processing = true;
-    this.setError(null);
-    
-    try {
-      const record = await importService.executeImport(recordId);
-      
-      // 更新记录状态
-      const index = this.records.findIndex(r => r.id === recordId);
-      if (index !== -1) {
-        this.records[index] = record;
-      }
-      if (this.currentRecord?.id === recordId) {
-        this.currentRecord = record;
-      }
-      
-      this.updateTimestamp();
-      return record;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.importing = false;
-      this.processing = false;
-    }
-  }
-  
-  executeBatchImport = async (batchJob: BatchImportJob): Promise<void> => {
-    this.processing = true;
-    this.setError(null);
-    
-    try {
-      this.activeBatchJob = batchJob;
-      
-      // 模拟批量导入过程
-      for (let i = 0; i < batchJob.files.length; i++) {
-        const file = batchJob.files[i];
-        this.batchProgress = (i / batchJob.files.length) * 100;
-        
-        // 这里应该调用实际的批量导入API
-        // await importService.executeBatchImport(batchJob);
-      }
-      
-      this.batchProgress = 100;
-      this.updateTimestamp();
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.processing = false;
-      this.activeBatchJob = null;
-    }
-  }
-  
-  cancelImport = async (recordId: string): Promise<void> => {
-    this.importing = true;
-    this.setError(null);
-    
-    try {
-      await importService.cancelImport(recordId);
-      
-      // 更新记录状态
-      const index = this.records.findIndex(r => r.id === recordId);
-      if (index !== -1) {
-        const record = this.records[index];
-        record.status = 'failed' as any;
-        this.records[index] = record;
-      }
-      
-      this.updateTimestamp();
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.importing = false;
-    }
-  }
-  
-  retryImport = async (recordId: string): Promise<ImportRecord> => {
-    this.importing = true;
-    this.setError(null);
-    
-    try {
-      // 重新执行导入
-      const record = await importService.executeImport(recordId);
-      
-      // 更新记录
-      const index = this.records.findIndex(r => r.id === recordId);
-      if (index !== -1) {
-        this.records[index] = record;
-      }
-      
-      this.updateTimestamp();
-      return record;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.importing = false;
-    }
-  }
-  
-  // === 作业管理实现 ===
-  
-  getImportJobs = async (recordId: string): Promise<ImportJob[]> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现获取导入作业的API调用
-      // const jobs = await importService.getImportJobs(recordId);
-      
-      // 模拟数据
-      const jobs: ImportJob[] = [];
-      this.updateTimestamp();
-      return jobs;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  pauseJob = async (jobId: string): Promise<void> => {
-    try {
-      // 实现暂停作业的逻辑
-      this.jobStatus.set(jobId, ImportJobStatus.PAUSED);
-      this.updateTimestamp();
-    } catch (error) {
-      this.setError(this.normalizeError(error));
-      throw error;
-    }
-  }
-  
-  resumeJob = async (jobId: string): Promise<void> => {
-    try {
-      // 实现恢复作业的逻辑
-      this.jobStatus.set(jobId, ImportJobStatus.RUNNING);
-      this.updateTimestamp();
-    } catch (error) {
-      this.setError(this.normalizeError(error));
-      throw error;
-    }
-  }
-  
-  cancelJob = async (jobId: string): Promise<void> => {
-    try {
-      // 实现取消作业的逻辑
-      this.jobStatus.set(jobId, ImportJobStatus.CANCELLED);
-      this.updateTimestamp();
-    } catch (error) {
-      this.setError(this.normalizeError(error));
-      throw error;
-    }
-  }
-  
-  // === 查询操作实现 ===
-  
-  getRecords = async (params: {
+  ) => Promise<ImportRecord>;
+
+  /**
+   * 取消当前上传
+   */
+  cancelUpload: () => void;
+
+  // ===== 新增：三步走流程的完整上传和轮询 =====
+
+  /**
+   * 上传文件并开始轮询处理状态（完整流程）
+   *
+   * 这是"三步走"流程的核心方法，完成从文件上传到处理完成的全流程：
+   * 1. 上传文件（uploadFileWithProgress）
+   * 2. 上传成功后自动开始轮询处理状态（pollImportStatus）
+   * 3. 处理完成后更新最终状态
+   *
+   * @param request - 导入请求参数
+   * @returns Promise<ImportRecord> - 最终的导入记录
+   */
+  /**
+   * 上传文件并立即执行导入（同步一步到位）
+   *
+   * 这是重构后的核心方法，直接调用后端的 upload-and-import 接口。
+   * 不再需要前端轮询，减少网络请求和状态管理的复杂度。
+   *
+   * @param request - 导入请求参数
+   * @returns Promise<ImportRecord> - 最终的导入结果
+   */
+  uploadAndImportDirectly: (request: DataImportRequest) => Promise<ImportRecord>;
+
+  /**
+   * 下载数据导入模板
+   *
+   * @param format - 模板格式 ('excel' | 'csv' | 'json')
+   */
+  downloadTemplate: (format: 'excel' | 'csv' | 'json') => Promise<void>;
+
+  /**
+   * 重置当前任务状态
+   *
+   * 清除当前任务的所有状态，准备下一次导入
+   */
+  resetCurrentTask: () => void;
+
+  // ===== 导入执行操作 =====
+
+  /**
+   * 执行导入
+   *
+   * @param recordId - 导入记录ID
+   * @returns Promise<ImportRecord> - 更新后的导入记录
+   */
+  executeImport: (recordId: string) => Promise<ImportRecord>;
+
+  /**
+   * 重试导入
+   *
+   * @param recordId - 导入记录ID
+   * @returns Promise<ImportRecord> - 更新后的导入记录
+   */
+  retryImport: (recordId: string) => Promise<ImportRecord>;
+
+  /**
+   * 取消导入
+   *
+   * @param recordId - 导入记录ID
+   */
+  cancelImport: (recordId: string) => Promise<void>;
+
+  /**
+   * 下载导入结果（错误报告或执行情况摘要）
+   * 
+   * @param recordId - 导入记录ID
+   */
+  downloadImportResult: (recordId: string) => Promise<void>;
+
+  // ===== 新增：历史记录查询操作（遵循 DataQueryPage 模式） =====
+
+  /**
+   * 获取历史导入记录列表
+   *
+   * 遵循 DataQueryPage 的"筛选-分页列表"模式
+   *
+   * @param page - 页码
+   * @param filters - 筛选条件（可选）
+   * @returns Promise<void>
+   */
+  fetchImportHistory: (page?: number, filters?: ImportRecordFilters) => Promise<void>;
+
+  /**
+   * 设置查询筛选条件
+   *
+   * 更新筛选条件并自动重新查询第一页
+   *
+   * @param filters - 筛选条件
+   */
+  setQueryFilters: (filters: ImportRecordFilters) => Promise<void>;
+
+  /**
+   * 设置查询页码
+   *
+   * 更新页码并重新查询
+   *
+   * @param page - 页码
+   */
+  setQueryPage: (page: number) => Promise<void>;
+
+  // ===== 查询操作 =====
+
+  /**
+   * 获取导入记录列表
+   *
+   * @param params - 查询参数（分页、筛选、排序）
+   * @returns Promise<void>
+   */
+  getRecords: (params?: {
     page?: number;
     pageSize?: number;
     filters?: ImportRecordFilters;
     sortBy?: ImportState['sortBy'];
     sortOrder?: ImportState['sortOrder'];
-  } = {}): Promise<{
-    items: ImportRecord[];
-    total: number;
-    page: number;
-    pageSize: number;
-    totalPages: number;
-  }> => {
-    this.loading = true;
-    this.setError(null);
-    
+  }) => Promise<void>;
+
+  /**
+   * 获取单条导入记录
+   *
+   * @param recordId - 导入记录ID
+   * @returns Promise<ImportRecord>
+   */
+  getRecord: (recordId: string) => Promise<ImportRecord>;
+
+  /**
+   * 获取统计信息
+   *
+   * @returns Promise<void>
+   */
+  getStatistics: () => Promise<void>;
+
+  // ===== 状态管理 =====
+
+  /**
+   * 设置加载状态
+   *
+   * @param loading - 是否加载中
+   */
+  setLoading: (loading: boolean) => void;
+
+  /**
+   * 设置错误信息
+   *
+   * @param error - 错误消息
+   */
+  setError: (error: string | null) => void;
+
+  /**
+   * 清除错误信息
+   */
+  clearError: () => void;
+
+  /**
+   * 刷新数据（重新加载记录和统计）
+   */
+  refresh: () => Promise<void>;
+
+  /**
+   * 重置Store到初始状态
+   */
+  reset: () => void;
+
+  // ===== 筛选和排序 =====
+
+  /**
+   * 设置筛选条件
+   *
+   * @param filters - 部分筛选条件
+   */
+  setFilters: (filters: Partial<ImportRecordFilters>) => void;
+
+  /**
+   * 清除筛选条件
+   */
+  clearFilters: () => void;
+
+  /**
+   * 设置排序规则
+   *
+   * @param sortBy - 排序字段
+   * @param sortOrder - 排序方向
+   */
+  setSorting: (sortBy: ImportState['sortBy'], sortOrder: ImportState['sortOrder']) => void;
+
+  // ===== 分页操作 =====
+
+  /**
+   * 跳转到指定页
+   *
+   * @param page - 目标页码
+   */
+  goToPage: (page: number) => void;
+
+  /**
+   * 下一页
+   */
+  goToNextPage: () => void;
+
+  /**
+   * 上一页
+   */
+  goToPreviousPage: () => void;
+
+  /**
+   * 改变每页大小
+   *
+   * @param pageSize - 新的每页大小
+   */
+  changePageSize: (pageSize: number) => void;
+}
+
+/**
+ * 默认筛选条件
+ */
+const defaultFilters: ImportRecordFilters = {};
+
+/**
+ * 数据导入状态管理 Store
+ *
+ * 使用 Zustand 实现的响应式状态管理，提供：
+ * - 文件上传和进度跟踪
+ * - 导入记录的 CRUD 操作
+ * - 分页、筛选和排序
+ * - 统计信息管理
+ */
+export const useImportStore = create<ImportState & ImportActions>((set, get) => ({
+  // ===== 初始状态 =====
+
+  // 核心数据
+  records: [],
+  currentRecord: null,
+
+  // 状态管理
+  loading: false,
+  uploading: false,
+  importing: false,
+  processing: false,
+  error: null,
+  lastUpdate: 0,
+
+  // 文件上传状态
+  uploadProgress: 0,
+  uploadStatus: 'idle',
+  currentUploadFile: null,
+
+  // ===== 新增：当前任务状态初始值 =====
+  currentTask: {
+    uploadProgress: 0,
+    importStatus: 'idle',
+    taskId: null,
+    fileName: null,
+    errorMessage: null,
+  },
+
+  // ===== 新增：历史记录状态初始值 =====
+  historicalImports: {
+    items: [],
+    total: 0,
+    page: 1,
+    pageSize: 10,
+    totalPages: 0,
+  },
+
+  // ===== 新增：查询状态初始值 =====
+  queryStatus: 'idle',
+  queryFilters: {},
+
+  // ===== 新增：轮询控制初始值 =====
+  pollingAbortController: null,
+
+  // 筛选和排序
+  filters: defaultFilters,
+  sortBy: 'uploadTime',
+  sortOrder: 'desc',
+
+  // 分页
+  page: 1,
+  pageSize: 10,
+  total: 0,
+  totalPages: 0,
+
+  // 统计数据
+  statistics: null,
+
+  // 预览功能
+  previewData: null,
+  showPreview: false,
+
+  // ===== Actions 实现 =====
+
+  /**
+   * 上传文件
+   *
+   * 直接调用后端 API: Service.importControllerUploadFile()
+   * 返回导入记录和预览数据
+   */
+  uploadFile: async (request: DataImportRequest): Promise<ImportRecord> => {
+    set({ uploading: true, error: null });
+
     try {
-      // 更新参数
-      if (params.page !== undefined) this.page = params.page;
-      if (params.pageSize !== undefined) this.pageSize = params.pageSize;
-      if (params.filters !== undefined) this.filters = { ...this.filters, ...params.filters };
-      if (params.sortBy !== undefined) this.sortBy = params.sortBy;
-      if (params.sortOrder !== undefined) this.sortOrder = params.sortOrder;
-      
-      // 调用API
-      const result = await importService.getImportRecords({
-        page: this.page,
-        pageSize: this.pageSize,
-        filters: this.filters,
+      set({ uploadProgress: 0, uploadStatus: 'uploading', currentUploadFile: request.file });
+
+      // 直接调用后端 API 上传文件
+      const response = await Service.importControllerUploadFile({
+        file: request.file,
+        fileFormat: request.fileFormat || 'excel',
+        duplicateStrategy: request.duplicateStrategy || 'skip',
+        remarks: request.remarks,
       });
-      
+
+      // 从响应中提取导入记录
+      const record = response.importRecord as ImportRecord;
+
       // 更新本地状态
-      this.records = result.items;
-      this.total = result.total;
-      this.totalPages = Math.ceil(result.total / this.pageSize);
-      this.cache.lastFetch = Date.now();
-      
-      this.updateTimestamp();
-      
-      // 返回完整的结果对象
-      return {
-        items: result.items,
-        total: result.total,
-        page: result.page,
-        pageSize: result.pageSize,
-        totalPages: this.totalPages,
-      };
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  getRecord = async (recordId: string): Promise<ImportRecord> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      const record = await importService.getImportRecord(recordId);
-      this.currentRecord = record;
-      this.updateTimestamp();
+      set(state => ({
+        records: [record, ...state.records],
+        total: state.total + 1,
+        currentRecord: record,
+        uploadProgress: 100,
+        uploadStatus: 'success',
+        uploading: false,
+        lastUpdate: Date.now(),
+      }));
+
+      // 2秒后重置上传状态
+      setTimeout(() => {
+        set({ uploadStatus: 'idle', currentUploadFile: null });
+      }, 2000);
+
       return record;
-      
+
     } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
+      const errorMessage = error instanceof Error ? error.message : '文件上传失败';
+      set({
+        error: errorMessage,
+        uploadStatus: 'error',
+        uploadProgress: 0,
+        uploading: false,
+      });
       throw error;
-    } finally {
-      this.loading = false;
     }
-  }
-  
-  getStatistics = async (): Promise<ImportStatistics> => {
-    this.loading = true;
-    this.setError(null);
-    
+  },
+
+  /**
+   * 上传文件（带进度回调）
+   *
+   * 直接调用后端 API: Service.importControllerUploadFile()
+   * 注意：后端 API 不支持原生上传进度，这里使用前端模拟进度
+   */
+  uploadFileWithProgress: async (
+    request: DataImportRequest,
+    onProgress?: (progress: number) => void
+  ): Promise<ImportRecord> => {
+    set({ uploading: true, error: null });
+
     try {
-      // 创建符合ImportStatistics接口的模拟数据
+      set({ uploadProgress: 0, uploadStatus: 'uploading' });
+
+      // 模拟上传进度（因为后端 API 不支持原生上传进度）
+      const progressInterval = setInterval(() => {
+        const currentProgress = get().uploadProgress;
+        if (currentProgress < 90) {
+          const newProgress = currentProgress + 10;
+          set({ uploadProgress: newProgress });
+          onProgress?.(newProgress);
+        }
+      }, 200);
+
+      // 直接调用后端 API 上传文件
+      const response = await Service.importControllerUploadFile({
+        file: request.file,
+        fileFormat: request.fileFormat || 'excel',
+        duplicateStrategy: request.duplicateStrategy || 'skip',
+        remarks: request.remarks,
+      });
+
+      clearInterval(progressInterval);
+      set({ uploadProgress: 100 });
+      onProgress?.(100);
+
+      // 从响应中提取导入记录
+      const record = response.importRecord as ImportRecord;
+
+      // 更新状态
+      set(state => ({
+        records: [record, ...state.records],
+        total: state.total + 1,
+        currentRecord: record,
+        uploadStatus: 'success',
+        uploading: false,
+        lastUpdate: Date.now(),
+      }));
+
+      // 2秒后重置上传状态
+      setTimeout(() => {
+        set({ uploadStatus: 'idle', currentUploadFile: null });
+      }, 2000);
+
+      return record;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '文件上传失败';
+      set({
+        error: errorMessage,
+        uploadStatus: 'error',
+        uploadProgress: 0,
+        uploading: false,
+      });
+      throw error;
+    }
+  },
+
+  /**
+   * 取消上传
+   */
+  /**
+   * 取消上传
+   */
+  cancelUpload: () => {
+    set({
+      uploading: false,
+      uploadProgress: 0,
+      uploadStatus: 'idle',
+      currentUploadFile: null,
+      error: '上传已取消',
+    });
+  },
+
+  /**
+   * 上传文件并立即执行导入（同步一步到位）
+   */
+  uploadAndImportDirectly: async (request: DataImportRequest): Promise<ImportRecord> => {
+    try {
+      // 1. 设置初始状态
+      set({
+        uploading: true,
+        currentTask: {
+          uploadProgress: 0,
+          importStatus: 'processing',
+          taskId: null,
+          fileName: request.file.name,
+          errorMessage: null,
+        },
+        error: null,
+      });
+
+      // 2. 调用后端一步式导入接口
+      const finalRecord = await Service.importControllerUploadAndImport({
+        file: request.file,
+        fileFormat: request.fileFormat || 'csv',
+        duplicateStrategy: request.duplicateStrategy || 'skip',
+        skipInvalidRows: request.skipInvalidRows ?? true,
+        remarks: request.remarks,
+      });
+
+      // 3. 更新成功后的状态
+      set(state => ({
+        uploading: false,
+        uploadProgress: 100,
+        currentTask: {
+          ...state.currentTask,
+          importStatus: 'success',
+          uploadProgress: 100,
+          taskId: finalRecord.id,
+        },
+        // 同时刷新历史记录列表
+        historicalImports: {
+          ...state.historicalImports,
+          items: [finalRecord, ...state.historicalImports.items].slice(0, state.historicalImports.pageSize),
+          total: state.historicalImports.total + 1,
+        },
+      }));
+
+      return finalRecord;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '上传并导入失败';
+      set(state => ({
+        uploading: false,
+        currentTask: {
+          ...state.currentTask,
+          importStatus: 'error',
+          errorMessage,
+        },
+        error: errorMessage,
+      }));
+      throw error;
+    }
+  },
+
+  /**
+   * 下载导入模板
+   */
+  downloadTemplate: async (format: 'excel' | 'csv' | 'json'): Promise<void> => {
+    try {
+      let data = await Service.importControllerDownloadTemplate(format);
+
+      // 确保我们处理的是 Blob 对象
+      // 如果后端或请求工具返回的是字符串（通常是 CSV），则将其包装为 Blob
+      const blob = data instanceof Blob
+        ? data
+        : new Blob([data as any], {
+          type: format === 'excel' ? 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' : 'text/csv'
+        });
+
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `import_template.${format === 'excel' ? 'xlsx' : format}`);
+      document.body.appendChild(link);
+      link.click();
+
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('下载模板失败:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 停止轮询（已弃用，旧版流程保留占位）
+   */
+  stopPolling: () => {
+    // 轮询已重构为一步式，此方法不再生效
+  },
+
+  /**
+   * 重置当前任务状态
+   */
+  resetCurrentTask: () => {
+    set({
+      currentTask: {
+        uploadProgress: 0,
+        importStatus: 'idle',
+        taskId: null,
+        fileName: null,
+        errorMessage: null,
+      },
+      error: null,
+    });
+  },
+
+  /**
+   * 执行导入
+   */
+  executeImport: async (recordId: string): Promise<ImportRecord> => {
+    set({ importing: true, processing: true, error: null });
+
+    try {
+      const record = await Service.importControllerExecuteImport({
+        importRecordId: recordId,
+        skipInvalidRows: true,
+        duplicateStrategy: ImportDataDto.duplicateStrategy.SKIP,
+      });
+
+      set(state => ({
+        records: state.records.map(r => r.id === recordId ? record : r),
+        currentRecord: state.currentRecord?.id === recordId ? record : state.currentRecord,
+        importing: false,
+        processing: false,
+        lastUpdate: Date.now(),
+      }));
+
+      return record;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '导入执行失败';
+      set({ error: errorMessage, importing: false, processing: false });
+      throw error;
+    }
+  },
+
+  /**
+   * 重试导入
+   */
+  retryImport: async (recordId: string): Promise<ImportRecord> => {
+    set({ importing: true, error: null });
+
+    try {
+      const record = await Service.importControllerExecuteImport({
+        importRecordId: recordId,
+        skipInvalidRows: true,
+        duplicateStrategy: ImportDataDto.duplicateStrategy.SKIP,
+      });
+
+      set(state => ({
+        records: state.records.map(r => r.id === recordId ? record : r),
+        importing: false,
+        lastUpdate: Date.now(),
+      }));
+
+      return record;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '重试失败';
+      set({ error: errorMessage, importing: false });
+      throw error;
+    }
+  },
+
+  /**
+   * 取消导入
+   */
+  /**
+   * 取消导入
+   */
+  cancelImport: async (recordId: string): Promise<void> => {
+    set({ importing: true, error: null });
+
+    try {
+      await Service.importControllerRemove(recordId);
+
+      set(state => ({
+        records: state.records.filter(r => r.id !== recordId),
+        importing: false,
+        lastUpdate: Date.now(),
+      }));
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '取消失败';
+      set({ error: errorMessage, importing: false });
+      throw error;
+    }
+  },
+
+  /**
+   * 下载导入结果
+   * 如果有错误，则生成详细的错误 CSV 报告；否则生成简要的执行总结
+   */
+  downloadImportResult: async (recordId: string): Promise<void> => {
+    try {
+      // 1. 获取记录详情（确保拿到最新的错误列表）
+      const record = await Service.importControllerFindOne(recordId);
+
+      const headers = ['行号', '状态', '错误原因', '原始数据'];
+      let csvContent = '\uFEFF'; // UTF-8 BOM，防止 Excel 打开乱码
+
+      // 添加表头
+      csvContent += headers.join(',') + '\n';
+
+      // 2. 遍历错误列表添加行
+      if (record.errors && record.errors.length > 0) {
+        record.errors.forEach(err => {
+          const rowData = [
+            err.row,
+            '失败',
+            `"${err.reason.replace(/"/g, '""')}"`, // 转义 CSV 中的引号
+            `"${JSON.stringify(err.data).replace(/"/g, '""')}"`
+          ];
+          csvContent += rowData.join(',') + '\n';
+        });
+      }
+
+      // 3. 添加执行摘要
+      csvContent += '\n\n导入摘要\n';
+      csvContent += `文件名,${record.fileName}\n`;
+      csvContent += `导入时间,${new Date(record.createdAt).toLocaleString()}\n`;
+      csvContent += `总行数,${record.totalRows}\n`;
+      csvContent += `成功数,${record.successRows}\n`;
+      csvContent += `失败数,${record.failedRows}\n`;
+      csvContent += `跳过数,${record.skippedRows}\n`;
+
+      // 4. 触发下载
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `import_result_${record.fileName.split('.')[0]}_${record.id.substring(0, 5)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('下载导入结果失败:', error);
+      throw error;
+    }
+  },
+
+  /**
+   * 获取历史导入记录列表
+   */
+  fetchImportHistory: async (page = 1, filters = {}): Promise<void> => {
+    set({ queryStatus: 'loading' });
+
+    try {
+      const state = get();
+      const mergedFilters = { ...state.queryFilters, ...filters };
+
+      const response = await Service.importControllerFindAll(
+        page,
+        state.historicalImports.pageSize,
+        mergedFilters.status?.[0],
+        mergedFilters.fileFormat?.[0],
+        mergedFilters.startTime ? new Date(mergedFilters.startTime).toISOString() : undefined,
+        mergedFilters.endTime ? new Date(mergedFilters.endTime).toISOString() : undefined
+      );
+
+      const result = (response as any).data || response;
+
+      set({
+        historicalImports: {
+          items: result.items || [],
+          total: result.total,
+          page: result.page,
+          pageSize: result.pageSize,
+          totalPages: result.totalPages,
+        },
+        queryStatus: 'success',
+        queryFilters: mergedFilters,
+      });
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '获取历史记录失败';
+      set({
+        queryStatus: 'error',
+        error: errorMessage,
+      });
+      throw error;
+    }
+  },
+
+  /**
+   * 设置查询筛选条件
+   */
+  setQueryFilters: async (filters: ImportRecordFilters): Promise<void> => {
+    set({ queryFilters: filters });
+    await get().fetchImportHistory(1, filters);
+  },
+
+  /**
+   * 设置查询页码
+   */
+  setQueryPage: async (page: number): Promise<void> => {
+    const state = get();
+    if (page < 1 || page > state.historicalImports.totalPages) {
+      return;
+    }
+    await get().fetchImportHistory(page, state.queryFilters);
+  },
+
+  /**
+   * 获取导入记录列表
+   */
+  getRecords: async (params = {}): Promise<void> => {
+    set({ loading: true, error: null });
+
+    try {
+      const state = get();
+
+      const page = params.page ?? state.page;
+      const pageSize = params.pageSize ?? state.pageSize;
+      const filters = params.filters ?? state.filters;
+
+      const response = await Service.importControllerFindAll(
+        page,
+        pageSize,
+        filters.status?.[0],
+        filters.fileFormat?.[0],
+        filters.startTime ? new Date(filters.startTime).toISOString() : undefined,
+        filters.endTime ? new Date(filters.endTime).toISOString() : undefined
+      );
+
+      const result = (response as any).data || response;
+
+      set(state => ({
+        records: result.items || [],
+        total: result.total || 0,
+        page: result.page || page,
+        pageSize: result.pageSize || pageSize,
+        totalPages: result.totalPages || Math.ceil((result.total || 0) / pageSize),
+        loading: false,
+        lastUpdate: Date.now(),
+        filters: params.filters !== undefined ? { ...state.filters, ...params.filters } : state.filters,
+        sortBy: params.sortBy !== undefined ? params.sortBy : state.sortBy,
+        sortOrder: params.sortOrder !== undefined ? params.sortOrder : state.sortOrder,
+      }));
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '获取记录失败';
+      set({ error: errorMessage, loading: false });
+      throw error;
+    }
+  },
+
+  /**
+   * 获取单条导入记录
+   */
+  getRecord: async (recordId: string): Promise<ImportRecord> => {
+    set({ loading: true, error: null });
+
+    try {
+      const record = await Service.importControllerFindOne(recordId);
+      set({ currentRecord: record, loading: false, lastUpdate: Date.now() });
+      return record;
+
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '获取记录失败';
+      set({ error: errorMessage, loading: false });
+      throw error;
+    }
+  },
+
+  /**
+   * 获取统计信息
+   */
+  getStatistics: async (): Promise<void> => {
+    set({ loading: true, error: null });
+
+    try {
       const mockStatistics: ImportStatistics = {
         dataQualityDistribution: {
           [DataQuality.NORMAL]: 0,
@@ -799,7 +1067,7 @@ class ImportStore implements ImportState, ImportActions {
         equipmentDistribution: {},
         metricTypeDistribution: {},
         timeRange: {
-          earliest: Date.now() - 86400000, // 24小时前
+          earliest: Date.now() - 86400000,
           latest: Date.now(),
         },
         valueRange: {
@@ -808,558 +1076,211 @@ class ImportStore implements ImportState, ImportActions {
           mean: 50,
         },
       };
-      
-      this.statistics = mockStatistics;
-      this.updateTimestamp();
-      return mockStatistics;
-      
+
+      set({ statistics: mockStatistics, loading: false, lastUpdate: Date.now() });
+
     } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
+      const errorMessage = error instanceof Error ? error.message : '获取统计失败';
+      set({ error: errorMessage, loading: false });
       throw error;
-    } finally {
-      this.loading = false;
     }
-  }
-  
-  getHistoryStatistics = async (period: { start: number; end: number }): Promise<ImportHistoryStatistics> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现历史统计API
-      // const historyStats = await importService.getHistoryStatistics(period);
-      
-      // 模拟数据
-      const historyStats: ImportHistoryStatistics = {
-        period,
-        totalImports: 0,
-        successfulImports: 0,
-        failedImports: 0,
-        totalRows: 0,
-        totalErrors: 0,
-        averageProcessingTime: 0,
-        importRate: 0,
-        statusDistribution: {
-          pending: 0,
-          processing: 0,
-          completed: 0,
-          partial: 0,
-          failed: 0,
-        },
-        formatDistribution: {
-          csv: 0,
-          excel: 0,
-          json: 0,
-          xml: 0,
-        },
-        topErrors: [],
-        equipmentDistribution: [],
-      };
-      
-      this.historyStatistics = historyStats;
-      this.updateTimestamp();
-      return historyStats;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  // === 模板管理实现 ===
-  
-  getTemplates = async (): Promise<ImportTemplate[]> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现获取模板的API
-      // const templates = await importService.getTemplates();
-      
-      // 模拟数据
-      const templates: ImportTemplate[] = [];
-      this.templates = templates;
-      this.updateTimestamp();
-      return templates;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  getTemplate = async (templateId: string): Promise<ImportTemplate> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现获取模板的API
-      // const template = await importService.getTemplate(templateId);
-      
-      // 模拟数据
-      const template: ImportTemplate = {
-        id: templateId,
-        name: '',
-        description: '',
-        fileFormat: FileFormat.CSV,
-        mapping: { sourceColumns: [], transformations: [], validations: [] },
-        options: {} as any,
-        createdBy: '',
-        isPublic: false,
-        usageCount: 0,
-        createdAt: Date.now(),
-        updatedAt: null,
-      };
-      
-      this.updateTimestamp();
-      return template;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  createTemplate = async (template: Omit<ImportTemplate, 'id' | 'createdAt' | 'updatedAt' | 'usageCount'>): Promise<ImportTemplate> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现创建模板的API
-      // const newTemplate = await importService.createTemplate(template);
-      
-      // 模拟数据
-      const newTemplate: ImportTemplate = {
-        ...template,
-        id: `template-${Date.now()}`,
-        createdAt: Date.now(),
-        updatedAt: null,
-        usageCount: 0,
-      };
-      
-      this.templates = [newTemplate, ...this.templates];
-      this.updateTimestamp();
-      return newTemplate;
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  updateTemplate = async (templateId: string, updates: Partial<ImportTemplate>): Promise<ImportTemplate> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现更新模板的API
-      // const updatedTemplate = await importService.updateTemplate(templateId, updates);
-      
-      // 模拟数据
-      const index = this.templates.findIndex(t => t.id === templateId);
-      if (index !== -1) {
-        const updatedTemplate = {
-          ...this.templates[index],
-          ...updates,
-          updatedAt: Date.now(),
-        };
-        this.templates[index] = updatedTemplate;
-        this.updateTimestamp();
-        return updatedTemplate;
-      }
-      
-      throw new Error('模板不存在');
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  deleteTemplate = async (templateId: string): Promise<void> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里需要实现删除模板的API
-      // await importService.deleteTemplate(templateId);
-      
-      this.templates = this.templates.filter(t => t.id !== templateId);
-      if (this.currentTemplate?.id === templateId) {
-        this.currentTemplate = null;
-      }
-      this.updateTimestamp();
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-  
-  selectTemplate = (template: ImportTemplate): void => {
-    this.currentTemplate = template;
-    this.updateTimestamp();
-  }
-  
-  // === 状态管理实现 ===
-  
-  setLoading = (loading: boolean): void => {
-    this.loading = loading;
-  }
-  
-  setError = (error: string | null): void => {
-    this.error = error;
-  }
-  
-  clearError = (): void => {
-    this.error = null;
-  }
-  
-  refresh = async (): Promise<void> => {
-    if (!this || !this.getRecords || !this.getStatistics) {
-      console.error('Store not properly initialized');
-      return;
-    }
-    
+  },
+
+  /**
+   * 设置加载状态
+   */
+  setLoading: (loading: boolean) => {
+    set({ loading });
+  },
+
+  /**
+   * 设置错误信息
+   */
+  setError: (error: string | null) => {
+    set({ error });
+  },
+
+  /**
+   * 清除错误信息
+   */
+  clearError: () => {
+    set({ error: null });
+  },
+
+  /**
+   * 刷新数据
+   */
+  refresh: async (): Promise<void> => {
+    const state = get();
     await Promise.all([
-      this.getRecords({ page: this.page, pageSize: this.pageSize, filters: this.filters }),
-      this.getStatistics(),
+      get().getRecords({ page: state.page, pageSize: state.pageSize, filters: state.filters }),
+      get().getStatistics(),
     ]);
-  }
-  
-  refreshStatistics = async (): Promise<void> => {
-    await this.getStatistics();
-  }
-  
-  reset = (): void => {
-    // 重置所有状态
-    this.records = [];
-    this.currentRecord = null;
-    this.uploading = false;
-    this.importing = false;
-    this.loading = false;
-    this.processing = false;
-    this.error = null;
-    this.lastUpdate = 0;
-    this.uploadProgress = 0;
-    this.uploadStatus = 'idle';
-    this.currentUploadFile = null;
-    this.previewData = null;
-    this.showPreview = false;
-    this.previewValidationErrors = [];
-    this.filters = {};
-    this.sortBy = 'uploadTime';
-    this.sortOrder = 'desc';
-    this.page = 1;
-    this.pageSize = 10;
-    this.total = 0;
-    this.totalPages = 0;
-    this.activeJobs.clear();
-    this.jobProgress.clear();
-    this.jobStatus.clear();
-    this.batchJobs = [];
-    this.activeBatchJob = null;
-    this.batchProgress = 0;
-    this.templates = [];
-    this.currentTemplate = null;
-    this.templateValidation = { isValid: false, errors: [] };
-    this.statistics = null;
-    this.historyStatistics = null;
-    this.trendData = { dailyImports: [], successRate: [], lastUpdated: 0 };
-    this.performanceMetrics = {
-      averageImportTime: 0,
-      importRate: 0,
-      errorRate: 0,
-      cacheHitRate: 0,
-    };
-    this.cache = {
-      lastFetch: 0,
-      cacheTimeout: 300000,
-      data: new Map<string, any>(),
-    };
-    this.websocketStatus = 'disconnected';
-    this.realtimeUpdates = true;
-    this.duplicateHandling = DuplicateHandling.SKIP;
-  }
-  
-  // === 筛选和排序实现 ===
-  
-  setFilters = (filters: Partial<ImportRecordFilters>): void => {
-    if (!this || !this.filters) {
-      console.error('Store not properly initialized');
-      return;
-    }
-    this.filters = { ...this.filters, ...filters };
-    this.page = 1; // 重置到第一页
-  }
-  
-  clearFilters = (): void => {
-    this.filters = {};
-    this.page = 1;
-  }
-  
-  setSorting = (sortBy: ImportState['sortBy'], sortOrder: ImportState['sortOrder']): void => {
-    this.sortBy = sortBy;
-    this.sortOrder = sortOrder;
-    this.page = 1;
-  }
-  
-  resetFilters = (): void => {
-    this.filters = {};
-    this.sortBy = 'uploadTime';
-    this.sortOrder = 'desc';
-    this.page = 1;
-  }
-  
-  // === 分页操作实现 ===
-  
-  goToPage = (page: number): void => {
-    if (page >= 1 && page <= this.totalPages) {
-      this.page = page;
-    }
-  }
-  
-  goToNextPage = (): void => {
-    if (this.page < this.totalPages) {
-      this.page++;
-    }
-  }
-  
-  goToPreviousPage = (): void => {
-    if (this.page > 1) {
-      this.page--;
-    }
-  }
-  
-  changePageSize = (pageSize: number): void => {
-    this.pageSize = pageSize;
-    this.page = 1;
-    this.totalPages = Math.ceil(this.total / this.pageSize);
-  }
-  
-  // === 实时更新实现 ===
-  
-  subscribeToUpdates = (): void => {
-    this.realtimeUpdates = true;
-    this.websocketStatus = 'connecting';
-    // 这里应该实现WebSocket连接逻辑
-    // this.connectWebSocket();
-  }
-  
-  unsubscribeFromUpdates = (): void => {
-    this.realtimeUpdates = false;
-    this.websocketStatus = 'disconnected';
-    // 这里应该断开WebSocket连接
-  }
-  
-  handleWebSocketMessage(message: any): void {
-    // 处理WebSocket消息
-    switch (message.type) {
-      case 'import_status_update':
-        this.handleImportStatusUpdate(message);
-        break;
-      case 'import_progress_update':
-        this.handleImportProgressUpdate(message);
-        break;
-      case 'import_completed':
-        this.handleImportCompleted(message);
-        break;
-      default:
-        console.log('未知消息类型:', message.type);
-    }
-  }
-  
-  reconnectWebSocket(): void {
-    this.websocketStatus = 'connecting';
-    // 实现重连逻辑
-  }
-  
-  private handleImportStatusUpdate(message: any): void {
-    const { recordId, status } = message;
-    const index = this.records.findIndex(r => r.id === recordId);
-    if (index !== -1) {
-      this.records[index].status = status;
-      this.updateTimestamp();
-    }
-  }
-  
-  private handleImportProgressUpdate(message: any): void {
-    const { jobId, progress } = message;
-    this.jobProgress.set(jobId, progress);
-  }
-  
-  private handleImportCompleted(message: any): void {
-    const { recordId, result } = message;
-    const index = this.records.findIndex(r => r.id === recordId);
-    if (index !== -1) {
-      this.records[index] = { ...this.records[index], ...result };
-      this.updateTimestamp();
-    }
-  }
-  
-  // === 缓存管理实现 ===
-  
-  clearCache = (): void => {
-    this.cache.data.clear();
-    this.cache.lastFetch = 0;
-  }
-  
-  invalidateCache = (key: string): void => {
-    this.cache.data.delete(key);
-  }
-  
-  getCachedData = <T>(key: string): T | null => {
-    if (!this.isCacheValid()) {
-      return null;
-    }
-    return this.cache.data.get(key) as T || null;
-  }
-  
-  setCachedData = <T>(key: string, data: T, ttl?: number): void => {
-    this.cache.data.set(key, data);
-    if (ttl) {
-      // 设置TTL逻辑（简化实现）
-      setTimeout(() => {
-        this.cache.data.delete(key);
-      }, ttl);
-    }
-  }
-  
-  // === 性能监控实现 ===
-  
-  recordPerformanceMetric = (metric: string, value: number): void => {
-    switch (metric) {
-      case 'importTime':
-        this.performanceMetrics.averageImportTime = value;
-        break;
-      case 'importRate':
-        this.performanceMetrics.importRate = value;
-        break;
-      case 'errorRate':
-        this.performanceMetrics.errorRate = value;
-        break;
-      case 'cacheHitRate':
-        this.performanceMetrics.cacheHitRate = value;
-        break;
-    }
-  }
-  
-  getPerformanceReport = (): any => {
-    return {
-      ...this.performanceMetrics,
-      timestamp: Date.now(),
-      recordsCount: this.records.length,
-      activeJobs: this.activeJobs.size,
-    };
-  }
-  
-  resetPerformanceMetrics = (): void => {
-    this.performanceMetrics = {
-      averageImportTime: 0,
-      importRate: 0,
-      errorRate: 0,
-      cacheHitRate: 0,
-    };
-  }
-  
-  // === 配置管理实现 ===
-  
-  updateImportConfig = (config: Partial<ImportState['importConfig']>): void => {
-    this.importConfig = { ...this.importConfig, ...config };
-  }
-  
-  setDuplicateHandling = (handling: DuplicateHandling): void => {
-    this.duplicateHandling = handling;
-  }
-  
-  // === 工具方法实现 ===
-  
-  calculateSuccessRate = (): number => {
-    if (this.records.length === 0) {
-      return 0;
-    }
-    
-    const totalRows = this.records.reduce((sum, record) => sum + record.totalRows, 0);
-    const successRows = this.records.reduce((sum, record) => sum + record.successRows, 0);
-    
-    return totalRows > 0 ? (successRows / totalRows) * 100 : 0;
-  }
-  
-  formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  }
-  
-  getStatusColor = (status: string): string => {
-    const colorMap: Record<string, string> = {
-      pending: 'blue',
-      processing: 'cyan',
-      completed: 'green',
-      partial: 'yellow',
-      failed: 'red',
-    };
-    return colorMap[status] || 'gray';
-  }
-  
-  exportRecords = async (format: 'csv' | 'excel'): Promise<void> => {
-    this.loading = true;
-    this.setError(null);
-    
-    try {
-      // 这里应该实现导出功能
-      console.log(`导出 ${format} 格式的记录`);
-      // const response = await importService.exportRecords(this.records, format);
-      // 触发下载
-      
-    } catch (error) {
-      const errorMessage = this.normalizeError(error);
-      this.setError(errorMessage);
-      throw error;
-    } finally {
-      this.loading = false;
-    }
-  }
-}
+  },
 
-// === 创建和导出Store实例 ===
-const importStore = new ImportStore();
+  /**
+   * 重置Store
+   */
+  reset: () => {
+    set({
+      records: [],
+      currentRecord: null,
+      loading: false,
+      uploading: false,
+      importing: false,
+      processing: false,
+      error: null,
+      lastUpdate: 0,
+      uploadProgress: 0,
+      uploadStatus: 'idle',
+      currentUploadFile: null,
+      currentTask: {
+        uploadProgress: 0,
+        importStatus: 'idle',
+        taskId: null,
+        fileName: null,
+        errorMessage: null,
+      },
+      historicalImports: {
+        items: [],
+        total: 0,
+        page: 1,
+        pageSize: 10,
+        totalPages: 0,
+      },
+      queryStatus: 'idle',
+      queryFilters: {},
+      pollingAbortController: null,
+      filters: defaultFilters,
+      sortBy: 'uploadTime',
+      sortOrder: 'desc',
+      page: 1,
+      pageSize: 10,
+      total: 0,
+      totalPages: 0,
+      statistics: null,
+      previewData: null,
+      showPreview: false,
+    });
+  },
 
-// 导出Hook样式接口
-export const useImportStore = () => importStore;
+  /**
+   * 设置筛选条件
+   */
+  setFilters: (filters: Partial<ImportRecordFilters>) => {
+    set(state => ({
+      filters: { ...state.filters, ...filters },
+      page: 1,
+    }));
+  },
 
-// 导出便捷Hook，包含计算属性
+  /**
+   * 清除筛选条件
+   */
+  clearFilters: () => {
+    set({ filters: defaultFilters, page: 1 });
+  },
+
+  /**
+   * 设置排序规则
+   */
+  setSorting: (sortBy: ImportState['sortBy'], sortOrder: ImportState['sortOrder']) => {
+    set({ sortBy, sortOrder, page: 1 });
+  },
+
+  /**
+   * 跳转到指定页
+   */
+  goToPage: (page: number) => {
+    const { totalPages } = get();
+    if (page >= 1 && page <= totalPages) {
+      set({ page });
+    }
+  },
+
+  /**
+   * 下一页
+   */
+  goToNextPage: () => {
+    const { page, totalPages } = get();
+    if (page < totalPages) {
+      set({ page: page + 1 });
+    }
+  },
+
+  /**
+   * 上一页
+   */
+  goToPreviousPage: () => {
+    const { page } = get();
+    if (page > 1) {
+      set({ page: page - 1 });
+    }
+  },
+
+  /**
+   * 改变每页大小
+   */
+  changePageSize: (pageSize: number) => {
+    set(state => ({
+      pageSize,
+      page: 1,
+      totalPages: Math.ceil(state.total / pageSize),
+    }));
+  },
+}));
+
+/**
+ * Import Store Selector 导出
+ *
+ * 提供常用状态的 Selector 函数，支持组件精确订阅状态片段，
+ * 避免不必要的重渲染
+ */
+export const useImportSelector = {
+  /** 导入记录列表 */
+  records: (state: ImportState & ImportActions) => state.records,
+
+  /** 当前记录 */
+  currentRecord: (state: ImportState & ImportActions) => state.currentRecord,
+
+  /** 加载状态 */
+  loading: (state: ImportState & ImportActions) => state.loading,
+
+  /** 上传进度 */
+  uploadProgress: (state: ImportState & ImportActions) => state.uploadProgress,
+
+  /** 上传状态 */
+  uploadStatus: (state: ImportState & ImportActions) => state.uploadStatus,
+
+  /** 分页信息 */
+  pagination: (state: ImportState & ImportActions) => ({
+    page: state.page,
+    pageSize: state.pageSize,
+    total: state.total,
+    totalPages: state.totalPages,
+  }),
+
+  /** 筛选条件 */
+  filters: (state: ImportState & ImportActions) => state.filters,
+
+  /** 统计信息 */
+  statistics: (state: ImportState & ImportActions) => state.statistics,
+};
+
+/**
+ * 兼容旧的 Hook（向后兼容）
+ *
+ * 提供与原 class-based store 兼容的导出方式
+ */
 export const useImport = () => {
   const store = useImportStore();
-  
+
   return {
-    // === 状态 ===
     ...store,
-    
-    // === 计算属性 ===
+
+    // 计算属性（兼容旧代码）
     latestRecord: store.records[0] || null,
-    
+
     recordsByStatus: {
       pending: store.records.filter(r => r.status === 'pending'),
       processing: store.records.filter(r => r.status === 'processing'),
@@ -1367,28 +1288,23 @@ export const useImport = () => {
       partial: store.records.filter(r => r.status === 'partial'),
       failed: store.records.filter(r => r.status === 'failed'),
     },
-    
-    successRate: store.calculateSuccessRate(),
-    
+
+    successRate: (() => {
+      if (store.records.length === 0) return 0;
+      const totalRows = store.records.reduce((sum, r) => sum + r.totalRows, 0);
+      const successRows = store.records.reduce((sum, r) => sum + r.successRows, 0);
+      return totalRows > 0 ? (successRows / totalRows) * 100 : 0;
+    })(),
+
     hasNextPage: store.page < store.totalPages,
     hasPreviousPage: store.page > 1,
-    
+
     isUploading: store.uploading || store.uploadStatus === 'uploading',
     isProcessing: store.processing || store.importing,
-    
-    // === 便捷方法 ===
-    uploadAndExecute: async (request: DataImportRequest) => {
-      const record = await store.uploadFile(request);
-      await store.executeImport(record.id);
-      return record;
-    },
-    
-    refreshWithCache: async () => {
-      if (!store.isCacheValid()) {
-        await store.refresh();
-      }
-    },
   };
 };
 
+/**
+ * 默认导出（向后兼容）
+ */
 export default useImportStore;

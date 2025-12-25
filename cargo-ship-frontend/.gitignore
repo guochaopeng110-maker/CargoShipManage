@@ -32,3 +32,6 @@ npm-debug.log*
 # Uploads
 /uploads
 /temp
+
+# Generated API Client
+#src/services/api

@@ -19,12 +19,13 @@ import { Bell, User, LogOut, Settings } from 'lucide-react'; // Bell:通知图�
 
 // 导入UI组件
 import { Button } from './ui/button'; // 按钮组件
+import { ConnectionStatusIndicator } from './ui/ConnectionStatusIndicator'; // WebSocket 连接状态指示器
 
-// 导入认证服务
-import { authService } from '../services/auth-service'; // 认证服务
+// 从后端 API 客户端导入类型定义
+import { User as UserType } from '@/services/api'; // 用户类型
 
-// 导入类型定义
-import { User as UserType } from '../types/auth'; // 用户类型
+// 导入认证状态管理
+import { useAuthStore } from '../stores/auth-store';
 
 // 导入Radix UI下拉菜单组件
 import {
@@ -36,6 +37,9 @@ import {
 } from './ui/dropdown-menu';
 
 import { Badge } from './ui/badge'; // 徽章组件，用于显示通知数量
+
+// 导入告警状态管理
+import { useAlarmsStore, AlertSeverity } from '../stores/alarms-store';
 
 /**
  * TopBar组件属性接口
@@ -59,64 +63,89 @@ interface TopBarProps {
 export function TopBar({ onLogout }: TopBarProps) {
   // React Router导航hook
   const navigate = useNavigate();
-  
-  // 通知数量状态管理（实际项目中应该从状态管理或API获取）
-  const [notificationCount] = useState(3); // 当前未读通知数量
 
-  // 用户信息状态管理
-  const [currentUser, setCurrentUser] = useState<UserType | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  // 从 alarms-store 获取告警状态和操作
+  const { pendingAlarms, getPendingAlarms, loading: alarmsLoading } = useAlarmsStore();
 
-  /**
-   * 获取当前用户信息
-   */
-  const fetchCurrentUser = async () => {
-    try {
-      setIsLoading(true);
-      const user = await authService.getCurrentUser();
-      setCurrentUser(user);
-      setError(null);
-    } catch (err) {
-      setError('获取用户信息失败');
-      console.error('Failed to fetch current user:', err);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // 通知数量即为待处理告警的数量
+  const notificationCount = pendingAlarms.length;
+
+  // 从 auth-store 获取用户信息
+  const { user: currentUser, refreshCurrentUser, loading: isLoading, error } = useAuthStore();
 
   /**
    * 组件加载时获取用户信息
    */
   useEffect(() => {
-    fetchCurrentUser();
-  }, []);
+    if (!currentUser) {
+      refreshCurrentUser().catch(err => {
+        console.error('Failed to fetch current user:', err);
+      });
+    }
+  }, [currentUser, refreshCurrentUser]);
 
   /**
-   * 刷新用户信息（用于从ProfilePage返回后更新）
+   * 组件加载时获取最新的待处理告警
    */
-  const refreshUserInfo = () => {
-    fetchCurrentUser();
+  useEffect(() => {
+    getPendingAlarms(5); // 获取最近5条待处理告警
+  }, [getPendingAlarms]);
+
+  /**
+   * 格式化告警发生时间为相对时间
+   * @param dateString ISO格式的时间字符串
+   */
+  const formatRelativeTime = (dateString?: string) => {
+    if (!dateString) return '时间未知';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffInSeconds = Math.floor((now.getTime() - date.getTime()) / 1000);
+
+    if (diffInSeconds < 60) return '刚刚';
+    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}分钟前`;
+    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}小时前`;
+    return `${Math.floor(diffInSeconds / 86400)}天前`;
+  };
+
+  /**
+   * 根据严重程度获取状态灯的类名
+   */
+  const getSeverityColorClass = (severity: AlertSeverity) => {
+    switch (severity) {
+      case AlertSeverity.CRITICAL:
+      case AlertSeverity.HIGH:
+        return 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]';
+      case AlertSeverity.MEDIUM:
+        return 'bg-amber-500';
+      case AlertSeverity.LOW:
+        return 'bg-blue-500';
+      default:
+        return 'bg-slate-500';
+    }
+  };
+
+  /**
+   * 根据严重程度获取文字描述
+   */
+  const getSeverityText = (severity: AlertSeverity) => {
+    switch (severity) {
+      case AlertSeverity.CRITICAL: return '极其严重';
+      case AlertSeverity.HIGH: return '严重告警';
+      case AlertSeverity.MEDIUM: return '一般告警';
+      case AlertSeverity.LOW: return '提示信息';
+      default: return '未知状态';
+    }
   };
 
   /**
    * 处理用户登出
    *
-   * 调用认证服务的登出方法，清理本地存储的认证数据
-   * 然后调用父组件传递的登出回调函数
+   * 直接调用父组件传递的登出回调函数，
+   * 父组件会负责调用 auth-store 的登出方法
    */
   const handleLogout = async () => {
-    try {
-      // 调用认证服务的登出方法
-      await authService.logout();
-      console.log('用户登出成功');
-    } catch (error) {
-      console.error('登出失败:', error);
-      // 即使登出API失败，也继续执行本地登出逻辑
-    } finally {
-      // 调用父组件的登出回调函数
-      onLogout();
-    }
+    // 直接调用父组件的登出回调函数
+    onLogout();
   };
 
   /**
@@ -126,39 +155,23 @@ export function TopBar({ onLogout }: TopBarProps) {
     navigate('/profile');
   };
 
-  /**
-   * 监听路由变化，从ProfilePage返回时刷新用户信息
-   */
-  useEffect(() => {
-    const handleRouteChange = () => {
-      // 如果从ProfilePage返回，刷新用户信息
-      if (window.location.pathname === '/') {
-        refreshUserInfo();
-      }
-    };
-
-    // 监听popstate事件（浏览器前进后退）
-    window.addEventListener('popstate', handleRouteChange);
-    
-    return () => {
-      window.removeEventListener('popstate', handleRouteChange);
-    };
-  }, []);
-
   // 返回顶部工具栏的JSX结构
   return (
     <header className="bg-slate-800 border-b border-slate-700 px-6 py-4">
       {/* 主容器：水平布局，左右两端对齐 */}
       <div className="flex items-center justify-between">
-        
+
         {/* 左侧：系统标题和版本信息 */}
         <h1 className="text-slate-100">
           货船智能机舱管理系统V1.1
         </h1>
 
-        {/* 右侧：通知和用户菜单区域 */}
+        {/* 右侧：连接状态、通知和用户菜单区域 */}
         <div className="flex items-center gap-4">
-          
+
+          {/* WebSocket 连接状态指示器 */}
+          <ConnectionStatusIndicator />
+
           {/* 通知下拉菜单 */}
           <DropdownMenu>
             {/* 下拉菜单触发器 */}
@@ -170,7 +183,7 @@ export function TopBar({ onLogout }: TopBarProps) {
               >
                 {/* 通知铃铛图标 */}
                 <Bell className="w-5 h-5" />
-                
+
                 {/* 通知数量徽章 - 仅在有通知时显示 */}
                 {notificationCount > 0 && (
                   <Badge className="absolute -top-1 -right-1 w-5 h-5 flex items-center justify-center p-0 bg-red-500 border-none text-white text-xs">
@@ -181,7 +194,7 @@ export function TopBar({ onLogout }: TopBarProps) {
             </DropdownMenuTrigger>
 
             {/* 下拉菜单内容 */}
-            <DropdownMenuContent 
+            <DropdownMenuContent
               align="end" // 右对齐
               className="w-80 bg-slate-800 border-slate-700 text-slate-300 min-h-10 z-[100]"
             >
@@ -192,50 +205,46 @@ export function TopBar({ onLogout }: TopBarProps) {
 
               {/* 通知列表内容区域 */}
               <div className="max-h-96 overflow-y-auto">
-                {/* 通知项1：严重告警 */}
-                <DropdownMenuItem className="flex flex-col items-start px-4 py-3 cursor-pointer hover:bg-slate-700">
-                  <div className="flex items-center gap-2 w-full">
-                    {/* 严重告警指示点 */}
-                    <span className="w-2 h-2 bg-red-500 rounded-full"></span>
-                    <span className="text-slate-200">严重告警</span>
+                {pendingAlarms.length > 0 ? (
+                  pendingAlarms.slice(0, 5).map((alarm) => (
+                    <DropdownMenuItem
+                      key={alarm.id}
+                      onClick={() => navigate('/alarm-center')}
+                      className="flex flex-col items-start px-4 py-3 cursor-pointer hover:bg-slate-700 border-b border-slate-700/50 last:border-b-0"
+                    >
+                      <div className="flex items-center gap-2 w-full">
+                        {/* 告警级别指示点 */}
+                        <span className={`w-2 h-2 rounded-full ${getSeverityColorClass(alarm.severity)}`}></span>
+                        <span className="text-slate-200 text-xs font-medium">{getSeverityText(alarm.severity)}</span>
+                        <span className="text-[10px] text-slate-500 ml-auto">{formatRelativeTime(alarm.triggeredAt)}</span>
+                      </div>
+                      {/* 告警描述内容 */}
+                      <p className="text-sm text-slate-300 mt-1 line-clamp-2">
+                        {alarm.message || alarm.faultName || '未知异常告警'}
+                      </p>
+                      {/* 设备名称 */}
+                      <span className="text-[10px] text-cyan-500/80 mt-1">
+                        来源: {alarm.equipmentName || alarm.equipmentId || '未知系统'}
+                      </span>
+                    </DropdownMenuItem>
+                  ))
+                ) : (
+                  <div className="px-4 py-8 text-center">
+                    <p className="text-slate-500 text-sm">暂无待处理通知</p>
                   </div>
-                  {/* 告警内容 */}
-                  <p className="text-sm text-slate-400 mt-1">
-                    电池1温度超过安全阈值
-                  </p>
-                  {/* 时间戳 */}
-                  <span className="text-xs text-slate-500 mt-1">5分钟前</span>
-                </DropdownMenuItem>
+                )}
+              </div>
 
-                {/* 通知项2：警告 */}
-                <DropdownMenuItem className="flex flex-col items-start px-4 py-3 cursor-pointer hover:bg-slate-700">
-                  <div className="flex items-center gap-2 w-full">
-                    {/* 警告指示点 */}
-                    <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
-                    <span className="text-slate-200">警告</span>
-                  </div>
-                  {/* 警告内容 */}
-                  <p className="text-sm text-slate-400 mt-1">
-                    推进系统效率下降15%
-                  </p>
-                  {/* 时间戳 */}
-                  <span className="text-xs text-slate-500 mt-1">1小时前</span>
-                </DropdownMenuItem>
-
-                {/* 通知项3：正常状态 */}
-                <DropdownMenuItem className="flex flex-col items-start px-4 py-3 cursor-pointer hover:bg-slate-700">
-                  <div className="flex items-center gap-2 w-full">
-                    {/* 正常状态指示点 */}
-                    <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                    <span className="text-slate-200">正常</span>
-                  </div>
-                  {/* 状态内容 */}
-                  <p className="text-sm text-slate-400 mt-1">
-                    系统健康检查完成
-                  </p>
-                  {/* 时间戳 */}
-                  <span className="text-xs text-slate-500 mt-1">2小时前</span>
-                </DropdownMenuItem>
+              {/* 查看全部按钮 */}
+              <div className="p-2 border-t border-slate-700">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full text-xs text-cyan-400 hover:text-cyan-300 hover:bg-slate-700"
+                  onClick={() => navigate('/alarm-center')}
+                >
+                  查看全部历史告警
+                </Button>
               </div>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -257,7 +266,7 @@ export function TopBar({ onLogout }: TopBarProps) {
             </DropdownMenuTrigger>
 
             {/* 用户菜单内容 */}
-            <DropdownMenuContent 
+            <DropdownMenuContent
               align="end" // 右对齐
               className="w-56 bg-slate-800 border-slate-700 text-slate-300 min-h-10 z-[100]"
             >

@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 电机外圆 -->
+  <circle cx="12" cy="12" r="7" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <!-- 电机定子线圈 -->
+  <path d="M8 12 Q8 9 12 9 Q16 9 16 12 Q16 15 12 15 Q8 15 8 12" stroke="currentColor" stroke-width="1" fill="none"/>
+  <!-- 转子 -->
+  <circle cx="12" cy="12" r="2.5" fill="currentColor" opacity="0.3"/>
+  <!-- 电压符号 -->
+  <path d="M12 4 L13.5 6.5 L10.5 6.5 Z" fill="currentColor"/>
+  <text x="12" y="22" font-family="Arial" font-size="6" font-weight="bold" fill="currentColor" text-anchor="middle">V</text>
+</svg>

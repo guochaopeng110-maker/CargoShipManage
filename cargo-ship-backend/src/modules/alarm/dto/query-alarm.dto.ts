@@ -1,10 +1,22 @@
-import { IsOptional, IsUUID, IsEnum, IsInt, Min, Max } from 'class-validator';
+import {
+  IsOptional,
+  IsUUID,
+  IsEnum,
+  IsString,
+  IsInt,
+  Min,
+  Max,
+  MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { AlarmSeverity, AlarmStatus } from '../../../database/entities';
 
 /**
  * 查询告警记录 DTO
+ *
+ * 支持按设备、严重程度、处理状态、监测点、时间范围筛选
+ * 支持分页查询
  */
 export class QueryAlarmDto {
   /**
@@ -17,6 +29,20 @@ export class QueryAlarmDto {
   @IsOptional()
   @IsUUID('4', { message: '设备ID格式无效' })
   equipmentId?: string;
+
+  /**
+   * 监测点名称（可选）
+   * 用于筛选特定监测点的告警记录
+   */
+  @ApiPropertyOptional({
+    description: '监测点名称（可选，用于筛选特定监测点的告警）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
 
   /**
    * 严重程度（可选）

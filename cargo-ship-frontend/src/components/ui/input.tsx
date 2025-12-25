@@ -44,27 +44,25 @@ type InputProps = React.ComponentProps<"input">;
  * @param props.disabled - 是否禁用
  * @param props.ref - 元素的引用
  */
-function Input({ className, type, ...props }: InputProps) {
-  return (
-    <input
-      type={type} // 输入框类型：text, password, email, number等
-      data-slot="input" // 用于样式选择器的数据属性
-      className={cn(
-        // 基础样式类
-        "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border px-3 py-1 text-base bg-input-background transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
-        
-        // 焦点状态样式：边框和阴影效果
-        "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
-        
-        // 错误状态样式：红色边框和阴影
-        "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
-        
-        className, // 自定义样式类，允许覆盖默认样式
-      )}
-      {...props} // 展开其他属性（如value、onChange、placeholder等）
-    />
-  );
-}
+const Input = React.forwardRef<HTMLInputElement, React.ComponentProps<"input">>(
+  ({ className, type, ...props }, ref) => {
+    return (
+      <input
+        ref={ref}
+        type={type}
+        data-slot="input"
+        className={cn(
+          "file:text-foreground placeholder:text-muted-foreground selection:bg-primary selection:text-primary-foreground dark:bg-input/30 border-input flex h-9 w-full min-w-0 rounded-md border px-3 py-1 text-base bg-input-background transition-[color,box-shadow] outline-none file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm",
+          "focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px]",
+          "aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+          className,
+        )}
+        {...props}
+      />
+    );
+  }
+);
+Input.displayName = "Input";
 
 // 导出输入框组件
 export { Input };

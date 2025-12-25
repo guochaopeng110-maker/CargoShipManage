@@ -5,9 +5,11 @@ import {
   CreateDateColumn,
   UpdateDateColumn,
   DeleteDateColumn,
+  OneToMany,
 } from 'typeorm';
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Exclude } from 'class-transformer';
+import { MonitoringPoint } from './monitoring-point.entity';
 
 /**
  * 设备状态枚举
@@ -29,8 +31,9 @@ export class Equipment {
    * UUID主键
    */
   @ApiProperty({
-    description: '设备唯一ID',
+    description: '设备唯一ID（UUID格式）',
     example: 'a1b2c3d4-e5f6-7890-abcd-ef1234567890',
+    type: String,
   })
   @PrimaryGeneratedColumn('uuid', { comment: 'UUID主键' })
   id: string;
@@ -39,7 +42,12 @@ export class Equipment {
    * 设备编号（唯一标识）
    * 格式：大写字母和数字组合，如 "ENG-001"
    */
-  @ApiProperty({ description: '设备编号（唯一标识）', example: 'ENG-001' })
+  @ApiProperty({
+    description: '设备编号（唯一标识，系统级唯一）',
+    example: 'SYS-BAT-001',
+    type: String,
+    maxLength: 50,
+  })
   @Column({
     name: 'device_id',
     unique: true,
@@ -51,7 +59,12 @@ export class Equipment {
   /**
    * 设备名称
    */
-  @ApiProperty({ description: '设备名称', example: '左推进电机' })
+  @ApiProperty({
+    description: '设备名称',
+    example: '左推进电机',
+    type: String,
+    maxLength: 100,
+  })
   @Column({
     name: 'device_name',
     length: 100,
@@ -63,7 +76,12 @@ export class Equipment {
    * 设备类型
    * 例如：主机、辅机、发电机、空压机等
    */
-  @ApiProperty({ description: '设备类型', example: '推进电机' })
+  @ApiProperty({
+    description: '设备类型（如推进电机、发电机、电池系统等）',
+    example: '推进电机',
+    type: String,
+    maxLength: 50,
+  })
   @Column({
     name: 'device_type',
     length: 50,
@@ -74,10 +92,11 @@ export class Equipment {
   /**
    * 设备型号
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '设备型号',
     example: 'PM-1500-400V',
-    required: false,
+    type: String,
+    maxLength: 100,
   })
   @Column({
     length: 100,
@@ -89,10 +108,11 @@ export class Equipment {
   /**
    * 制造商
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '制造商',
     example: '某电机制造商',
-    required: false,
+    type: String,
+    maxLength: 100,
   })
   @Column({
     length: 100,
@@ -105,10 +125,11 @@ export class Equipment {
    * 安装位置
    * 例如：机舱、甲板、船尾等
    */
-  @ApiProperty({
-    description: '安装位置',
+  @ApiPropertyOptional({
+    description: '安装位置（如机舱左侧、甲板中央等）',
     example: '机舱左侧',
-    required: false,
+    type: String,
+    maxLength: 100,
   })
   @Column({
     length: 100,
@@ -121,9 +142,10 @@ export class Equipment {
    * 设备状态
    */
   @ApiProperty({
-    description: '设备状态',
+    description: '设备当前运行状态',
     enum: EquipmentStatus,
     example: EquipmentStatus.NORMAL,
+    default: EquipmentStatus.NORMAL,
   })
   @Column({
     type: 'enum',
@@ -136,10 +158,10 @@ export class Equipment {
   /**
    * 投产日期
    */
-  @ApiProperty({
+  @ApiPropertyOptional({
     description: '投产日期',
     example: '2024-02-01',
-    required: false,
+    type: Date,
   })
   @Column({
     name: 'commission_date',
@@ -152,10 +174,10 @@ export class Equipment {
   /**
    * 设备描述
    */
-  @ApiProperty({
-    description: '设备描述',
-    example: '永磁同步电机，额定功率1500kW',
-    required: false,
+  @ApiPropertyOptional({
+    description: '设备详细描述',
+    example: '永磁同步电机，额定功率1500kW，用于船舶左侧推进',
+    type: String,
   })
   @Column({
     type: 'text',
@@ -167,7 +189,11 @@ export class Equipment {
   /**
    * 创建时间
    */
-  @ApiProperty({ description: '记录创建时间' })
+  @ApiProperty({
+    description: '记录创建时间',
+    example: '2025-01-01T10:00:00.000Z',
+    type: Date,
+  })
   @CreateDateColumn({
     name: 'created_at',
     comment: '创建时间',
@@ -177,7 +203,11 @@ export class Equipment {
   /**
    * 更新时间
    */
-  @ApiProperty({ description: '记录更新时间' })
+  @ApiProperty({
+    description: '记录更新时间',
+    example: '2025-01-02T15:30:00.000Z',
+    type: Date,
+  })
   @UpdateDateColumn({
     name: 'updated_at',
     comment: '更新时间',
@@ -188,12 +218,30 @@ export class Equipment {
    * 软删除时间
    * 非空表示该设备已被删除
    */
+  @ApiPropertyOptional({
+    description: '软删除时间（非空表示该设备已被删除）',
+    example: null,
+    type: Date,
+  })
   @Exclude() // 在响应中排除此字段
   @DeleteDateColumn({
     name: 'deleted_at',
     comment: '软删除时间',
   })
   deletedAt: Date;
+
+  /**
+   * 关联的监测点列表
+   *
+   * 一对多关系: 一个设备可以有多个监测点
+   * 级联查询: 使用 relations: ['monitoringPoints'] 可预加载监测点
+   * 自动级联删除: 设备删除时,关联的监测点自动删除
+   */
+  @OneToMany(
+    () => MonitoringPoint,
+    (monitoringPoint) => monitoringPoint.equipment,
+  )
+  monitoringPoints: MonitoringPoint[];
 
   // ========== 辅助方法 ==========
 

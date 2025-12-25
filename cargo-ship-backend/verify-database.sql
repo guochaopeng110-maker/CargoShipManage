@@ -51,7 +51,8 @@ LIMIT 10;
 DESCRIBE users;
 
 -- 8. 查看permissions表结构
-DESCRIBE permissions;
+-- 验证 time_series_data 表结构
+SHOW CREATE TABLE time_series_data;
 
 -- 9. 查看外键约束
 SELECT

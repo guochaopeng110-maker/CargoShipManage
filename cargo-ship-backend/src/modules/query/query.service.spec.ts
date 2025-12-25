@@ -90,6 +90,8 @@ describe('QueryService', () => {
           provide: getRepositoryToken(AlarmRecord),
           useValue: {
             createQueryBuilder: jest.fn(),
+            find: jest.fn(),
+            count: jest.fn(),
           },
         },
       ],
@@ -308,6 +310,7 @@ describe('QueryService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue(mockAlarms),
+        getSql: jest.fn().mockReturnValue('SELECT * FROM alarm_records'),
       };
 
       alarmRepository.createQueryBuilder.mockReturnValue(
@@ -351,6 +354,7 @@ describe('QueryService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue(mockAlarms),
+        getSql: jest.fn().mockReturnValue('SELECT * FROM alarm_records'),
       };
 
       alarmRepository.createQueryBuilder.mockReturnValue(
@@ -403,6 +407,7 @@ describe('QueryService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue(mockAlarms),
+        getSql: jest.fn().mockReturnValue('SELECT * FROM alarm_records'),
       };
 
       alarmRepository.createQueryBuilder.mockReturnValue(
@@ -432,11 +437,14 @@ describe('QueryService', () => {
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
         getMany: jest.fn().mockResolvedValue([]),
+        getSql: jest.fn().mockReturnValue('SELECT * FROM alarm_records'),
       };
 
       alarmRepository.createQueryBuilder.mockReturnValue(
         mockQueryBuilder as any,
       );
+      alarmRepository.find.mockResolvedValue([]);
+      alarmRepository.count.mockResolvedValue(0);
 
       // Act - 执行操作
       const result = await service.getAlarmStatistics(dto);

@@ -1,0 +1,14 @@
+<!-- 电池SOC（荷电状态）图标 -->
+<!-- 设计要点：电池符号 + 电量条，类似手机电量图标 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 电池外框 -->
+  <rect x="4" y="7" width="13" height="10" rx="2" />
+  <!-- 电池正极凸起 -->
+  <line x1="17" y1="10" x2="17" y2="14" />
+  <!-- 电量条 - 75% -->
+  <rect x="6" y="9" width="9" height="6" rx="1" />
+  <!-- 百分比符号 -->
+  <circle cx="19.5" cy="9" r="1.5" stroke-width="1.5" />
+  <line x1="18" y1="12" x2="21" y2="15" stroke-width="1.5" />
+  <circle cx="19.5" cy="15" r="1.5" stroke-width="1.5" />
+</svg>

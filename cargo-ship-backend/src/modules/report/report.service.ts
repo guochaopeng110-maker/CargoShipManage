@@ -9,10 +9,9 @@ import { Repository, FindOptionsWhere, Between } from 'typeorm';
 import {
   HealthReport,
   ReportType,
-  RiskLevel,
 } from '../../database/entities/health-report.entity';
 import { HealthAssessmentService } from './health-assessment.service';
-import { CreateHealthReportDto } from './dto/create-health-report.dto';
+import { GenerateHealthReportDto } from './dto';
 import { QueryHealthReportDto } from './dto/query-health-report.dto';
 import { UpdateHealthReportDto } from './dto/update-health-report.dto';
 import { Equipment } from '../../database/entities/equipment.entity';
@@ -34,248 +33,69 @@ export class ReportService {
   ) {}
 
   /**
-   * 生成健康报告
-   * @param createDto 创建报告DTO
-   * @param userId 用户ID
-   * @returns 生成的报告
+   * 生成新的健康评估报告（已重构）
+   *
+   * @description
+   * 此方法协调整个报告生成流程：
+   * 1. 验证输入参数和设备是否存在。
+   * 2. 调用 HealthAssessmentService 以获取基于第三方 API 的评估结果。
+   * 3. 将评估结果与请求元数据（如用户ID、时间戳）合并。
+   * 4. 创建并持久化一个新的 HealthReport 实体。
+   *
+   * @param dto 包含设备ID和时间范围的数据传输对象
+   * @param userId 执行此操作的用户的ID
+   * @returns {Promise<HealthReport>} 持久化后的完整健康报告实体
+   * @throws {BadRequestException} 如果请求参数不合法（如缺少设备ID）
+   * @throws {NotFoundException} 如果请求的设备不存在
    */
   async generateReport(
-    createDto: CreateHealthReportDto,
+    dto: GenerateHealthReportDto,
     userId: string,
   ): Promise<HealthReport> {
-    this.logger.log(
-      `用户 ${userId} 请求生成健康报告，类型：${createDto.reportType}`,
-    );
+    this.logger.log(`用户 ${userId} 请求为设备 ${dto.deviceId} 生成健康报告`);
 
-    // 验证时间范围
-    if (createDto.startTime >= createDto.endTime) {
-      throw new BadRequestException('开始时间必须小于结束时间');
+    const { deviceId, startTime, endTime } = dto;
+
+    // 步骤 1: 验证输入
+    if (!deviceId) {
+      throw new BadRequestException('必须提供设备ID (deviceId)');
     }
-
-    // 根据报告类型生成不同的报告
-    if (createDto.reportType === ReportType.SINGLE) {
-      return this.generateSingleReport(createDto, userId);
-    } else {
-      return this.generateAggregateReport(createDto, userId);
-    }
-  }
-
-  /**
-   * 生成单设备报告
-   * @param createDto 创建报告DTO
-   * @param userId 用户ID
-   * @returns 单设备报告
-   */
-  private async generateSingleReport(
-    createDto: CreateHealthReportDto,
-    userId: string,
-  ): Promise<HealthReport> {
-    // 验证设备ID列表
-    if (!createDto.equipmentIds || createDto.equipmentIds.length === 0) {
-      throw new BadRequestException('单设备报告必须指定设备ID');
-    }
-
-    if (createDto.equipmentIds.length > 1) {
-      throw new BadRequestException('单设备报告只能指定一个设备ID');
-    }
-
-    const equipmentId = createDto.equipmentIds[0];
-
-    // 验证设备是否存在
     const equipment = await this.equipmentRepository.findOne({
-      where: { id: equipmentId },
+      where: { id: deviceId },
     });
-
     if (!equipment) {
-      throw new NotFoundException(`设备 ${equipmentId} 不存在`);
+      throw new NotFoundException(`设备 ${deviceId} 不存在`);
     }
 
+    // 步骤 2: 调用核心评估服务获取评估数据
     this.logger.debug(
-      `开始生成设备 ${equipmentId} 的单设备报告，时间范围：${createDto.startTime} - ${createDto.endTime}`,
+      `调用 HealthAssessmentService 为设备 ${deviceId} 进行评估...`,
     );
 
-    // 计算健康评分
-    const healthScore = await this.healthAssessmentService.calculateHealthScore(
-      equipmentId,
-      createDto.startTime,
-      createDto.endTime,
-    );
+    dto.deviceId = equipment.deviceId;
+    this.logger.debug('此时deviceId:' + dto.deviceId);
+    const partialReport = await this.healthAssessmentService.assess(dto);
 
-    // 计算运行时间统计
-    const uptimeStats = await this.healthAssessmentService.calculateUptimeStats(
-      equipmentId,
-      createDto.startTime,
-      createDto.endTime,
-    );
-
-    // 统计异常次数
-    const abnormalCount =
-      await this.healthAssessmentService.countAbnormalEvents(
-        equipmentId,
-        createDto.startTime,
-        createDto.endTime,
-      );
-
-    // 生成趋势分析
-    const trendAnalysis =
-      await this.healthAssessmentService.generateTrendAnalysis(
-        equipmentId,
-        createDto.startTime,
-        createDto.endTime,
-      );
-
-    // 创建报告实体
-    const report = this.healthReportRepository.create({
-      equipmentId,
-      reportType: ReportType.SINGLE,
-      dataStartTime: createDto.startTime,
-      dataEndTime: createDto.endTime,
-      healthScore,
-      uptimeStats,
-      abnormalCount,
-      trendAnalysis,
+    // 步骤 3: 创建并组合完整的报告实体
+    this.logger.debug(`评估完成，准备创建报告实体...`);
+    const reportToSave = this.healthReportRepository.create({
+      ...partialReport, // 合并来自评估服务的结果 (healthScore, healthLevel, etc.)
+      equipmentId: deviceId,
+      reportType: ReportType.SINGLE, // 新流程只支持单设备报告
+      dataStartTime: new Date(startTime).getTime(),
+      dataEndTime: new Date(endTime).getTime(),
       generatedAt: Date.now(),
       generatedBy: userId,
     });
 
-    // 计算健康等级
-    report.healthLevel = report.calculateHealthLevel();
-
-    // 保存报告
-    const savedReport = await this.healthReportRepository.save(report);
+    // 步骤 4: 持久化报告到数据库
+    const savedReport = await this.healthReportRepository.save(reportToSave);
 
     this.logger.log(
-      `设备 ${equipmentId} 的单设备报告生成成功，ID：${savedReport.id}，健康评分：${healthScore}`,
+      `成功为设备 ${deviceId} 生成并存储了新的健康报告, 报告ID: ${savedReport.id}`,
     );
 
-    return savedReport;
-  }
-
-  /**
-   * 生成汇总报告
-   * @param createDto 创建报告DTO
-   * @param userId 用户ID
-   * @returns 汇总报告
-   */
-  private async generateAggregateReport(
-    createDto: CreateHealthReportDto,
-    userId: string,
-  ): Promise<HealthReport> {
-    this.logger.debug(
-      `开始生成汇总报告，时间范围：${createDto.startTime} - ${createDto.endTime}`,
-    );
-
-    // 获取要汇总的设备列表
-    let equipmentIds: string[];
-    if (createDto.equipmentIds && createDto.equipmentIds.length > 0) {
-      equipmentIds = createDto.equipmentIds;
-    } else {
-      // 如果未指定设备，则汇总所有设备
-      const allEquipment = await this.equipmentRepository.find({
-        select: ['id'],
-      });
-      equipmentIds = allEquipment.map((eq) => eq.id);
-    }
-
-    if (equipmentIds.length === 0) {
-      throw new BadRequestException('没有可用的设备进行汇总');
-    }
-
-    this.logger.debug(`汇总报告包含 ${equipmentIds.length} 个设备`);
-
-    // 计算所有设备的健康评分
-    const healthScores: number[] = [];
-    let totalAbnormalCount = 0;
-    let totalRunningDuration = 0;
-    let totalDuration = 0;
-
-    for (const equipmentId of equipmentIds) {
-      const score = await this.healthAssessmentService.calculateHealthScore(
-        equipmentId,
-        createDto.startTime,
-        createDto.endTime,
-      );
-      healthScores.push(score);
-
-      const abnormalCount =
-        await this.healthAssessmentService.countAbnormalEvents(
-          equipmentId,
-          createDto.startTime,
-          createDto.endTime,
-        );
-      totalAbnormalCount += abnormalCount;
-
-      const uptimeStats =
-        await this.healthAssessmentService.calculateUptimeStats(
-          equipmentId,
-          createDto.startTime,
-          createDto.endTime,
-        );
-      totalRunningDuration += uptimeStats.runningDuration;
-      totalDuration += uptimeStats.totalDuration;
-    }
-
-    // 计算平均健康评分
-    const avgHealthScore =
-      healthScores.reduce((a, b) => a + b, 0) / healthScores.length;
-
-    // 计算汇总运行时间统计
-    const avgUptimeRate =
-      totalDuration > 0 ? (totalRunningDuration / totalDuration) * 100 : 0;
-    const uptimeStats = {
-      totalDuration: totalDuration,
-      runningDuration: totalRunningDuration,
-      maintenanceDuration: 0, // 汇总报告不统计维护时间
-      stoppedDuration: totalDuration - totalRunningDuration,
-      uptimeRate: Math.round(avgUptimeRate * 100) / 100,
-    };
-
-    // 生成汇总趋势分析
-    const trendAnalysis = {
-      temperatureTrend: '整体稳定',
-      vibrationTrend: '整体稳定',
-      overallTrend:
-        avgHealthScore >= 75
-          ? '良好'
-          : avgHealthScore >= 60
-            ? '一般'
-            : '需要关注',
-      riskLevel:
-        totalAbnormalCount === 0
-          ? RiskLevel.LOW
-          : totalAbnormalCount <= equipmentIds.length * 5
-            ? RiskLevel.MEDIUM
-            : RiskLevel.HIGH,
-      suggestions: [
-        `共计 ${equipmentIds.length} 个设备，平均健康评分 ${avgHealthScore.toFixed(2)}`,
-        `总异常次数 ${totalAbnormalCount} 次`,
-        avgHealthScore < 70 ? '部分设备健康状况需要关注' : '整体运行状况良好',
-      ],
-    };
-
-    // 创建报告实体
-    const report = this.healthReportRepository.create({
-      reportType: ReportType.AGGREGATE,
-      dataStartTime: createDto.startTime,
-      dataEndTime: createDto.endTime,
-      healthScore: Math.round(avgHealthScore * 100) / 100,
-      uptimeStats,
-      abnormalCount: totalAbnormalCount,
-      trendAnalysis,
-      generatedAt: Date.now(),
-      generatedBy: userId,
-    });
-
-    // 计算健康等级
-    report.healthLevel = report.calculateHealthLevel();
-
-    // 保存报告
-    const savedReport = await this.healthReportRepository.save(report);
-
-    this.logger.log(
-      `汇总报告生成成功，ID：${savedReport.id}，包含设备数：${equipmentIds.length}，平均健康评分：${avgHealthScore.toFixed(2)}`,
-    );
-
+    // 步骤 5: 返回已保存的报告
     return savedReport;
   }
 
@@ -318,6 +138,7 @@ export class ReportService {
       total,
       page,
       pageSize,
+      totalPages: Math.ceil(total / (pageSize || 20)),
     };
   }
 

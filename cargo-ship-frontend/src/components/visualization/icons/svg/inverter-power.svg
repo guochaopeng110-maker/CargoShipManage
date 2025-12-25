@@ -1,0 +1,11 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 逆变器框 -->
+  <rect x="5" y="7" width="14" height="10" rx="1.5" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <!-- 能量波形 -->
+  <path d="M7 12 L9 10 L11 14 L13 8 L15 12 L17 10" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- 功率符号 -->
+  <text x="12" y="21" font-family="Arial" font-size="6" font-weight="bold" fill="currentColor" text-anchor="middle">kW</text>
+  <!-- 能量指示 -->
+  <circle cx="19" cy="9" r="1.5" fill="currentColor" opacity="0.6"/>
+  <path d="M19 8 L19 10 M18 9 L20 9" stroke="white" stroke-width="0.8" stroke-linecap="round"/>
+</svg>

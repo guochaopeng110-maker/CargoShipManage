@@ -1,4 +1,4 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsNotEmpty,
   IsOptional,
@@ -7,6 +7,8 @@ import {
   IsUUID,
   ValidateNested,
   Min,
+  IsString,
+  MaxLength,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { MetricType } from '../../../database/entities/time-series-data.entity';
@@ -44,6 +46,16 @@ export class MonitoringDataExportQueryDto {
   @IsOptional()
   @IsEnum(MetricType, { message: '指标类型无效' })
   metricType?: MetricType;
+
+  @ApiPropertyOptional({
+    description: '监测点名称（可选，用于筛选特定监测点的数据）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
 
   @ApiProperty({
     description: '开始时间（Unix时间戳，毫秒）',

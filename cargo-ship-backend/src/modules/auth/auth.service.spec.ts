@@ -383,7 +383,7 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
       await expect(
         service.validateUser('testuser', 'anyPassword'),
-      ).rejects.toThrow('Account is locked');
+      ).rejects.toThrow('账户已被锁定');
     });
 
     it('应该在锁定过期后自动解锁账户', async () => {
@@ -547,14 +547,12 @@ describe('AuthService', () => {
       );
 
       // Assert
-      expect(result.user.roles).toContain('administrator');
-      expect(result.user.permissions).toContain('device:create');
-      expect(result.user.permissions).toContain('device:read');
+      expect(result.user.roles).toContain('Administrator');
       expect(jwtService.sign).toHaveBeenCalledWith(
         expect.objectContaining({
           sub: userWithPermissions.id,
           username: userWithPermissions.username,
-          roles: ['administrator'],
+          roles: ['Administrator'],
           permissions: ['device:create', 'device:read'],
         }),
       );
@@ -604,7 +602,7 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
       await expect(service.refreshToken('invalid.token')).rejects.toThrow(
-        'Invalid or expired refresh token',
+        '无效或已过期的刷新令牌',
       );
     });
 
@@ -619,7 +617,7 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
       await expect(service.refreshToken(mockRefreshToken)).rejects.toThrow(
-        'Invalid or expired refresh token',
+        '用户不存在',
       );
     });
 
@@ -638,7 +636,7 @@ describe('AuthService', () => {
         UnauthorizedException,
       );
       await expect(service.refreshToken(mockRefreshToken)).rejects.toThrow(
-        'Invalid or expired refresh token',
+        '无效或已过期的刷新令牌',
       );
     });
   });
@@ -701,8 +699,8 @@ describe('AuthService', () => {
 
   describe('修改密码 (changePassword)', () => {
     const userId = 'test-user-id';
-    const oldPassword = 'OldPassword123!';
-    const newPassword = 'NewPassword123!';
+    const oldPassword = 'OldP@ssw0rd!';
+    const newPassword = 'N3wP@ssw0rd!Strong';
     const ipAddress = '192.168.1.100';
     const userAgent = 'Mozilla/5.0';
 
@@ -763,7 +761,7 @@ describe('AuthService', () => {
           ipAddress,
           userAgent,
         ),
-      ).rejects.toThrow('User not found');
+      ).rejects.toThrow('用户不存在');
     });
 
     it('应该在旧密码错误时抛出 BadRequestException', async () => {
@@ -789,7 +787,7 @@ describe('AuthService', () => {
           ipAddress,
           userAgent,
         ),
-      ).rejects.toThrow('Current password is incorrect');
+      ).rejects.toThrow('旧密码错误');
     });
 
     it('应该在新密码不符合要求时抛出 BadRequestException', async () => {
@@ -816,7 +814,7 @@ describe('AuthService', () => {
           ipAddress,
           userAgent,
         ),
-      ).rejects.toThrow('Password does not meet requirements');
+      ).rejects.toThrow('密码强度不符合要求');
     });
 
     it('应该记录密码修改审计日志', async () => {

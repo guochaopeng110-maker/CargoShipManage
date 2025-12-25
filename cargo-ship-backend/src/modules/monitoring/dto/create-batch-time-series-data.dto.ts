@@ -9,6 +9,8 @@ import {
   IsEnum,
   IsNumber,
   IsOptional,
+  IsString,
+  MaxLength,
   Min,
   Max,
 } from 'class-validator';
@@ -48,6 +50,20 @@ export class BatchDataItemDto {
   @IsNotEmpty({ message: '指标类型不能为空' })
   @IsEnum(MetricType, { message: '指标类型无效' })
   metricType: MetricType;
+
+  /**
+   * 监测点名称（可选）
+   * 用于区分相同物理类型但业务含义不同的监测点
+   */
+  @ApiPropertyOptional({
+    description: '监测点名称（可选）',
+    example: '总电压',
+    maxLength: 100,
+  })
+  @IsOptional()
+  @IsString({ message: '监测点名称必须是字符串' })
+  @MaxLength(100, { message: '监测点名称长度不能超过100个字符' })
+  monitoringPoint?: string;
 
   /**
    * 指标数值（必填）

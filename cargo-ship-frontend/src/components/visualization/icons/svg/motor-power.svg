@@ -1,0 +1,14 @@
+<!-- 电机功率图标 -->
+<!-- 设计要点：电机符号 + 功率波形 -->
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+  <!-- 电机外圈 -->
+  <circle cx="10" cy="12" r="6" />
+  <!-- 电机转子 -->
+  <circle cx="10" cy="12" r="2" />
+  <!-- 功率波形（正弦波） -->
+  <path d="M17 9 Q18 7 19 9 T21 9" stroke-width="1.5" fill="none" />
+  <path d="M17 12 Q18 10 19 12 T21 12" stroke-width="1.5" fill="none" />
+  <path d="M17 15 Q18 13 19 15 T21 15" stroke-width="1.5" fill="none" />
+  <!-- kW 标识线 -->
+  <line x1="20" y1="17" x2="22" y2="17" stroke-width="1.5" />
+</svg>

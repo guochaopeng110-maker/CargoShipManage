@@ -1,344 +1,643 @@
-// 设备状态管理Store（对应后端Equipment实体）
-// 基于货船智能机舱管理系统设备管理架构
-//
-// 功能说明：
-// - 管理设备列表的获取、分页、筛选
-// - 提供设备的增删改查功能
-// - 处理设备状态的实时更新
-// - 维护设备概览统计信息
-// - 支持设备选择的本地状态管理
-
-import { useState, useCallback } from 'react';
-import { EquipmentState, Equipment, EquipmentFilters, EquipmentOverview, CreateEquipmentRequest, UpdateEquipmentRequest } from '../types/equipment';
-import { equipmentService } from '../services/equipment-service';
-
 /**
- * 设备状态管理Hook
- * 提供设备相关的所有状态管理和业务逻辑操作
+ * 货船智能机舱管理系统 - 设备状态管理
  *
- * @returns {Object} 包含设备状态和操作方法的对象
- *   - items: 设备列表
- *   - selectedEquipment: 当前选中的设备
- *   - loading: 加载状态
- *   - error: 错误信息
- *   - total: 总设备数量
- *   - page: 当前页码
- *   - pageSize: 每页数量
- *   - totalPages: 总页数
- *   - filters: 筛选条件
- *   - overview: 设备概览统计
- *   - fetchEquipmentList: 获取设备列表
- *   - fetchEquipmentDetail: 获取设备详情
- *   - createEquipment: 创建设备
- *   - updateEquipment: 更新设备
- *   - deleteEquipment: 删除设备
- *   - fetchEquipmentOverview: 获取设备概览
- *   - updateEquipmentStatus: 更新设备状态
- *   - setSelectedEquipment: 设置选中设备
- *   - setPage: 设置页码
- *   - setPageSize: 设置页面大小
- *   - setFilters: 设置筛选条件
- *   - clearError: 清除错误信息
+ * 职责：
+ * 1. 管理设备列表、详情和概览的全局状态。
+ * 2. 封装设备增删改查的 API 调用。
+ *
+ * 架构：
+ * - State: 纯数据状态 (items, selectedEquipment, filters...)
+ * - Actions: 业务逻辑 (fetchEquipmentList, createEquipment...)
+ * - 100% 使用后端生成的 API 类型，无前端映射逻辑
+ *
+ * @module stores/equipment-store
  */
-export const useEquipmentStore = () => {
-  // 设备状态初始化
-  const [state, setState] = useState<EquipmentState>({
-    items: [],                // 设备列表数据
-    selectedEquipment: null,  // 当前选中的设备
-    loading: false,           // 加载状态标识
-    error: null,              // 错误信息
-    total: 0,                 // 总设备数量
-    page: 1,                  // 当前页码
-    pageSize: 20,             // 每页显示数量
-    totalPages: 0,            // 总页数
-    filters: {},              // 筛选条件
-    overview: null,           // 设备概览统计信息
-  });
 
+import { create } from 'zustand';
+// 从 API 客户端导入设备相关类型和服务（完全对齐后端接口）
+import {
+  Equipment,
+  CreateEquipmentDto,
+  UpdateEquipmentDto,
+  Service,
+  MonitoringPoint,
+} from '@/services/api';
+
+// ==========================================
+// 筛选条件接口（前端使用）
+// ==========================================
+
+// 设备筛选条件接口
+export interface EquipmentFilters {
+  name?: string;          // 设备名称筛选（模糊匹配）
+  model?: string;         // 设备型号筛选（精确或模糊匹配）
+  location?: string;      // 设备位置筛选
+  status?: Equipment.status; // 设备状态筛选（使用后端枚举）
+  searchTerm?: string;    // 搜索关键词（模糊匹配设备名称、型号、位置等）
+}
+
+// 设备统计概览（后端 API 实际返回的类型）
+export interface EquipmentStatistics {
+  normal?: number;   // 正常状态设备数量
+  warning?: number;  // 告警状态设备数量
+  fault?: number;    // 故障状态设备数量
+  offline?: number;  // 离线状态设备数量
+  total?: number;    // 设备总数
+}
+
+// ==========================================
+// State 定义
+// ==========================================
+interface EquipmentStoreState {
+  /** 设备列表 */
+  items: Equipment[];
+
+  /** 当前选中的设备 */
+  selectedEquipment: Equipment | null;
+
+  /** 加载状态 */
+  loading: boolean;
+
+  /** 错误信息 */
+  error: string | null;
+
+  /** 总数 */
+  total: number;
+
+  /** 当前页码 */
+  page: number;
+
+  /** 每页数量 */
+  pageSize: number;
+
+  /** 总页数 */
+  totalPages: number;
+
+  /** 筛选条件 */
+  filters: EquipmentFilters;
+
+  /** 排序字段 */
+  sortBy?: string;
+
+  /** 排序方向 */
+  sortOrder?: 'asc' | 'desc';
+
+  /** 设备概览统计（使用后端 API 实际返回的类型） */
+  overview: EquipmentStatistics | null;
+
+  /** 当前选中设备的监测点列表 */
+  monitoringPoints: MonitoringPoint[];
+}
+
+// ==========================================
+// Actions 定义
+// ==========================================
+interface EquipmentStoreActions {
   /**
    * 获取设备列表
-   *
-   * 根据分页参数和筛选条件获取设备列表数据
-   * 支持动态分页、筛选和排序功能
-   *
-   * @param {Object} params - 获取参数
-   * @param {number} params.page - 页码（从1开始）
-   * @param {number} params.pageSize - 每页数量
-   * @param {EquipmentFilters} params.filters - 筛选条件
-   * @returns {Promise<Object>} 设备列表响应数据
-   *
-   * @throws {Error} 当获取设备列表失败时抛出错误
+   * @param params 可选参数，不传则使用当前 State 中的分页和筛选
    */
-  const fetchEquipmentList = useCallback(async (params?: { page?: number; pageSize?: number; filters?: EquipmentFilters }) => {
-    // 设置加载状态并清除之前的错误
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  fetchEquipmentList: (params?: { page?: number; pageSize?: number; filters?: EquipmentFilters; sortBy?: string; sortOrder?: 'asc' | 'desc' }) => Promise<any>;
+
+  /**
+   * 确保设备列表已加载（智能缓存版）
+   * 如果当前已经有缓存数据，则直接返回，不再发起网络请求。
+   */
+  ensureItemsLoaded: (params?: { page?: number; pageSize?: number; filters?: EquipmentFilters }) => Promise<any>;
+
+  /** 获取设备详情 */
+  fetchEquipmentDetail: (equipmentId: string) => Promise<Equipment>;
+
+  /**
+   * 根据ID获取设备（标准CRUD方法别名）
+   * @alias fetchEquipmentDetail
+   */
+  fetchItemById: (id: string) => Promise<Equipment>;
+
+  /**
+   * 创建设备
+   * @alias createItem (标准CRUD方法)
+   */
+  createEquipment: (equipmentData: CreateEquipmentDto) => Promise<Equipment>;
+
+  /** 创建设备（标准CRUD方法别名） */
+  createItem: (data: CreateEquipmentDto) => Promise<Equipment>;
+
+  /**
+   * 更新设备
+   * @alias updateItem (标准CRUD方法)
+   */
+  updateEquipment: (equipmentId: string, equipmentData: UpdateEquipmentDto) => Promise<Equipment>;
+
+  /** 更新设备（标准CRUD方法别名） */
+  updateItem: (id: string, data: UpdateEquipmentDto) => Promise<Equipment>;
+
+  /**
+   * 删除设备
+   * @alias deleteItem (标准CRUD方法)
+   */
+  deleteEquipment: (equipmentId: string) => Promise<void>;
+
+  /** 删除设备（标准CRUD方法别名） */
+  deleteItem: (id: string) => Promise<void>;
+
+  /** 恢复设备 */
+  restoreEquipment: (equipmentId: string) => Promise<Equipment>;
+
+  /** 获取设备概览 */
+  fetchEquipmentOverview: () => Promise<EquipmentStatistics | null>;
+
+  /** 更新设备状态 */
+  updateEquipmentStatus: (equipmentId: string, status: Equipment.status) => Promise<Equipment>;
+
+  /** 获取设备监测点列表 */
+  fetchMonitoringPoints: (equipmentId: string) => Promise<MonitoringPoint[]>;
+
+  /**
+   * 设置选中设备
+   * @alias setSelectedItem (标准CRUD方法)
+   */
+  setSelectedEquipment: (equipment: Equipment | null) => void;
+
+  /** 设置选中项（标准CRUD方法别名） */
+  setSelectedItem: (item: Equipment | null) => void;
+
+  /** 设置页码 (自动触发获取列表) */
+  setPage: (page: number) => void;
+
+  /** 设置页面大小 (自动触发获取列表) */
+  setPageSize: (pageSize: number) => void;
+
+  /** 设置筛选条件 (自动触发获取列表) */
+  setFilters: (filters: EquipmentFilters, merge?: boolean) => void;
+
+  /** 设置排序配置 (自动触发获取列表) */
+  setSort: (sortBy: string, sortOrder: 'asc' | 'desc') => void;
+
+  /** 清除错误 */
+  clearError: () => void;
+
+  /** 重置Store到初始状态 */
+  reset: () => void;
+}
+
+// 合并类型
+export type EquipmentStore = EquipmentStoreState & EquipmentStoreActions;
+
+/**
+ * 设备 Store
+ */
+export const useEquipmentStore = create<EquipmentStore>((set, get) => ({
+  // --- 初始 State ---
+  items: [],
+  selectedEquipment: null,
+  loading: false,
+  error: null,
+  total: 0,
+  page: 1,
+  pageSize: 20,
+  totalPages: 0,
+  filters: {},
+  sortBy: undefined,
+  sortOrder: undefined,
+  overview: null,
+  monitoringPoints: [],
+
+  // --- Actions 实现 ---
+
+  fetchEquipmentList: async (params) => {
+    // 获取当前状态
+    const state = get();
+
+    // 🔍 防重复请求检查 - 已禁用，解决 App.tsx 和 Dashboard 同时请求导致的竞争问题
+    // if (state.loading) {
+    //   console.log('设备API请求被阻止 - 已有请求在进行中');
+    //   return {
+    //     items: state.items,
+    //     total: state.total,
+    //     page: state.page,
+    //     pageSize: state.pageSize,
+    //     totalPages: state.totalPages
+    //   };
+    // }
+
+    // 准备参数: 优先使用传入参数，否则使用 State 中的参数
+    const requestPage = params?.page ?? state.page;
+    const requestPageSize = params?.pageSize ?? state.pageSize;
+    const requestFilters = params?.filters ?? state.filters;
+    const requestSortBy = params?.sortBy ?? state.sortBy;
+    const requestSortOrder = params?.sortOrder ?? state.sortOrder;
+
+    console.log('设备API请求 - 页码:', requestPage, '筛选:', requestFilters);
+
+    set({ loading: true, error: null });
 
     try {
-      // 调用设备服务获取数据，使用传入参数或当前状态值
-      const response = await equipmentService.getEquipmentList({
-        page: params?.page || state.page,        // 使用传入页码或当前页码
-        pageSize: params?.pageSize || state.pageSize, // 使用传入页面大小或当前页面大小
-        ...params?.filters,                      // 展开筛选条件
+      // 调用后端 API：equipmentControllerFindAll
+      const response = await Service.equipmentControllerFindAll(
+        requestPage,
+        requestPageSize,
+        undefined, // deviceType (暂不使用)
+        requestFilters.status, // 直接使用后端枚举值
+        requestFilters.searchTerm || requestFilters.name // keyword 参数
+      );
+
+      // 解析响应结构：兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
+      const items = (result.items as Equipment[]) || [];
+      const total = result.total || 0;
+      const page = result.page || requestPage;
+      const pageSize = result.pageSize || requestPageSize;
+      const totalPages = result.totalPages || Math.ceil(total / pageSize);
+
+      console.log('设备API响应 - 数据条数:', items.length, '总数:', total);
+      console.log('设备数据更新完成 - 设备数:', items.length, '总数:', total);
+
+      // 计算总页数 (if not provided by backend)
+      // const totalPages = Math.ceil(total / requestPageSize);
+
+      // 更新 State
+      const newState = {
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages,
+        filters: requestFilters,
+        sortBy: requestSortBy,
+        sortOrder: requestSortOrder,
+        loading: false,
+        error: null
+      };
+
+      set(newState);
+
+      return {
+        items,
+        total,
+        page,
+        pageSize,
+        totalPages
+      };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '设备列表API请求失败';
+      console.error('设备列表API请求失败:', error);
+      console.log('设备API错误 -', errorMessage);
+
+      // 返回空结果（不再使用Mock数据回退）
+      const emptyResponse = {
+        items: [],
+        total: 0,
+        page: requestPage,
+        pageSize: requestPageSize,
+        totalPages: 0
+      };
+      set({
+        items: [],
+        total: 0,
+        page: requestPage,
+        pageSize: requestPageSize,
+        totalPages: 0,
+        filters: requestFilters,
+        sortBy: requestSortBy,
+        sortOrder: requestSortOrder,
+        loading: false,
+        error: errorMessage // 设置错误信息供UI展示
+      });
+      return emptyResponse;
+    }
+  },
+
+  ensureItemsLoaded: async (params) => {
+    const state = get();
+    // 检查是否已经有数据且没有正在加载
+    if (state.items.length > 0 && !state.loading) {
+      console.log('设备列表已存在，跳过冗余请求');
+      return {
+        items: state.items,
+        total: state.total,
+        page: state.page,
+        pageSize: state.pageSize,
+        totalPages: state.totalPages
+      };
+    }
+    // 否则执行正常获取逻辑
+    return get().fetchEquipmentList(params);
+  },
+
+  fetchEquipmentDetail: async (equipmentId: string) => {
+    set({ loading: true, error: null });
+    try {
+      // 调用后端 API：equipmentControllerFindOne
+      const response = await Service.equipmentControllerFindOne(equipmentId);
+      // 兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
+
+      // 直接使用后端返回的数据，无需映射
+      set({
+        selectedEquipment: result,
+        loading: false,
+        error: null
+      });
+      return result;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '获取设备详情失败';
+      console.error('设备详情API请求失败:', error);
+
+      set({
+        loading: false,
+        error: errorMessage
       });
 
-      // 更新状态为获取成功的结果
-      setState(prev => ({
-        ...prev,
-        items: response.items,          // 设备列表数据
-        total: response.total,          // 总设备数量
-        page: response.page,            // 当前页码
-        pageSize: response.pageSize,    // 每页数量
-        totalPages: response.totalPages, // 总页数
-        loading: false,                 // 清除加载状态
-        error: null,                    // 清除错误信息
-        filters: params?.filters || prev.filters, // 更新筛选条件
-      }));
-
-      return response; // 返回响应数据供调用者使用
-    } catch (error) {
-      // 发生错误时更新状态
-      setState(prev => ({
-        ...prev,
-        loading: false, // 清除加载状态
-        error: error instanceof Error ? error.message : '获取设备列表失败', // 设置错误信息
-      }));
-      throw error; // 重新抛出错误供调用者处理
-    }
-  }, [state.page, state.pageSize]);
-
-  // 获取设备详情
-  const fetchEquipmentDetail = useCallback(async (equipmentId: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-
-    try {
-      const equipment = await equipmentService.getEquipmentDetail(equipmentId);
-      
-      setState(prev => ({
-        ...prev,
-        selectedEquipment: equipment,
-        loading: false,
-        error: null,
-      }));
-
-      return equipment;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : '获取设备详情失败',
-      }));
       throw error;
     }
-  }, []);
+  },
 
-  // 创建设备
-  const createEquipment = useCallback(async (equipmentData: CreateEquipmentRequest) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  // 标准CRUD方法：根据ID获取单个项目
+  fetchItemById: async (id: string) => {
+    return await get().fetchEquipmentDetail(id);
+  },
 
+  createEquipment: async (equipmentData) => {
+    set({ loading: true, error: null });
     try {
-      const equipment = await equipmentService.createEquipment(equipmentData);
-      
-      setState(prev => ({
-        ...prev,
-        items: [equipment, ...prev.items],
-        total: prev.total + 1,
-        loading: false,
-        error: null,
-      }));
+      // 调用后端 API：equipmentControllerCreate
+      const response = await Service.equipmentControllerCreate(equipmentData);
+      // 兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
 
-      return equipment;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
+      const state = get();
+      set({
+        items: [result, ...state.items],
+        total: state.total + 1,
         loading: false,
-        error: error instanceof Error ? error.message : '创建设备失败',
-      }));
+        error: null
+      });
+      return result;
+    } catch (error) {
+      set({
+        loading: false,
+        error: error instanceof Error ? error.message : '创建设备失败'
+      });
       throw error;
     }
-  }, []);
+  },
 
-  // 更新设备
-  const updateEquipment = useCallback(async (equipmentId: string, equipmentData: UpdateEquipmentRequest) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  // 标准CRUD方法：创建项目（别名）
+  createItem: async (data) => {
+    return get().createEquipment(data);
+  },
 
+  updateEquipment: async (equipmentId, equipmentData) => {
+    set({ loading: true, error: null });
     try {
-      const equipment = await equipmentService.updateEquipment(equipmentId, equipmentData);
-      
-      setState(prev => ({
-        ...prev,
-        items: prev.items.map(item => item.id === equipmentId ? equipment : item),
-        selectedEquipment: prev.selectedEquipment?.id === equipmentId ? equipment : prev.selectedEquipment,
-        loading: false,
-        error: null,
-      }));
+      // 调用后端 API：equipmentControllerUpdate
+      const response = await Service.equipmentControllerUpdate(equipmentId, equipmentData);
+      // 兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
 
-      return equipment;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
+      const state = get();
+
+      set({
+        items: state.items.map(item => item.id === equipmentId ? result : item),
+        selectedEquipment: state.selectedEquipment?.id === equipmentId ? result : state.selectedEquipment,
         loading: false,
-        error: error instanceof Error ? error.message : '更新设备失败',
-      }));
+        error: null
+      });
+      return result;
+    } catch (error) {
+      set({
+        loading: false,
+        error: error instanceof Error ? error.message : '更新设备失败'
+      });
       throw error;
     }
-  }, []);
+  },
 
-  // 删除设备
-  const deleteEquipment = useCallback(async (equipmentId: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  // 标准CRUD方法：更新项目（别名）
+  updateItem: async (id, data) => {
+    return get().updateEquipment(id, data);
+  },
+
+  deleteEquipment: async (equipmentId) => {
+    // 乐观更新：先更新UI
+    const state = get();
+    const originalItems = [...state.items];
+    const originalTotal = state.total;
+
+    // 立即从UI中移除
+    set({
+      items: state.items.filter(item => item.id !== equipmentId),
+      total: state.total - 1,
+      selectedEquipment: state.selectedEquipment?.id === equipmentId ? null : state.selectedEquipment,
+    });
 
     try {
-      await equipmentService.deleteEquipment(equipmentId);
-      
-      setState(prev => ({
-        ...prev,
-        items: prev.items.filter(item => item.id !== equipmentId),
-        total: prev.total - 1,
-        selectedEquipment: prev.selectedEquipment?.id === equipmentId ? null : prev.selectedEquipment,
-        loading: false,
-        error: null,
-      }));
+      // 调用后端 API：equipmentControllerRemove
+      await Service.equipmentControllerRemove(equipmentId);
+      set({ error: null });
     } catch (error) {
-      setState(prev => ({
-        ...prev,
-        loading: false,
-        error: error instanceof Error ? error.message : '删除设备失败',
-      }));
+      // 失败时回滚
+      set({
+        items: originalItems,
+        total: originalTotal,
+        error: error instanceof Error ? error.message : '删除设备失败'
+      });
       throw error;
     }
-  }, []);
+  },
 
-  // 恢复已删除的设备
-  const restoreEquipment = useCallback(async (equipmentId: string) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
+  // 标准CRUD方法：删除项目（别名）
+  deleteItem: async (id) => {
+    return get().deleteEquipment(id);
+  },
 
+  restoreEquipment: async (equipmentId) => {
+    set({ loading: true, error: null });
     try {
-      const equipment = await equipmentService.restoreEquipment(equipmentId);
-      
-      setState(prev => ({
-        ...prev,
-        items: [equipment, ...prev.items],
-        total: prev.total + 1,
-        selectedEquipment: prev.selectedEquipment?.id === equipmentId ? equipment : prev.selectedEquipment,
-        loading: false,
-        error: null,
-      }));
+      // 调用后端 API：equipmentControllerRestore
+      const response = await Service.equipmentControllerRestore(equipmentId);
+      // 兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
 
-      return equipment;
-    } catch (error) {
-      setState(prev => ({
-        ...prev,
+      const state = get();
+
+      set({
+        items: [result, ...state.items],
+        total: state.total + 1,
+        selectedEquipment: state.selectedEquipment?.id === equipmentId ? result : state.selectedEquipment,
         loading: false,
-        error: error instanceof Error ? error.message : '恢复设备失败',
-      }));
+        error: null
+      });
+      return result;
+    } catch (error) {
+      set({
+        loading: false,
+        error: error instanceof Error ? error.message : '恢复设备失败'
+      });
       throw error;
     }
-  }, []);
+  },
 
-  // 获取设备概览
-  const fetchEquipmentOverview = useCallback(async () => {
+  fetchEquipmentOverview: async () => {
     try {
-      const overview = await equipmentService.getEquipmentOverview();
-      
-      setState(prev => ({
-        ...prev,
-        overview,
-      }));
+      const response = await Service.equipmentControllerGetStatistics();
+      // 兼容处理可能的 .data 包装
+      const stats = (response as any).data || response;
 
-      return overview;
+      // 直接使用后端返回的 EquipmentOverviewDto 类型
+      set({ overview: stats });
+      return stats;
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '获取设备概览失败';
       console.error('获取设备概览失败:', error);
-      // 不抛出错误，允许页面继续使用Mock数据
-      return null;
+
+      // 返回空概览数据
+      const emptyOverview: EquipmentStatistics = {
+        normal: 0,
+        warning: 0,
+        fault: 0,
+        offline: 0,
+        total: 0,
+      };
+
+      set({
+        overview: emptyOverview,
+        error: errorMessage
+      });
+      return emptyOverview;
     }
-  }, []);
+  },
 
-  // 更新设备状态
-  const updateEquipmentStatus = useCallback(async (equipmentId: string, status: any) => {
-    setState(prev => ({ ...prev, loading: true, error: null }));
-
+  updateEquipmentStatus: async (equipmentId, status) => {
+    set({ loading: true, error: null });
     try {
-      const equipment = await equipmentService.updateEquipmentStatus(equipmentId, status);
-      
-      setState(prev => ({
-        ...prev,
-        items: prev.items.map(item => item.id === equipmentId ? equipment : item),
-        loading: false,
-        error: null,
-      }));
+      // 调用后端 API：equipmentControllerUpdateStatus
+      const response = await Service.equipmentControllerUpdateStatus(equipmentId, {
+        status,
+      });
 
-      return equipment;
+      // 提取实际的设备数据（处理包装的响应结构 {code, message, data}）
+      const updated = (response as any).data || response;
+
+      const state = get();
+
+      // 合并返回的状态到原始对象，保持其他字段不变
+      const newItems = state.items.map(item =>
+        item.id === equipmentId ? { ...item, ...updated } : item
+      );
+      set({ items: newItems, loading: false, error: null });
+
+      return updated;
     } catch (error) {
-      setState(prev => ({
-        ...prev,
+      set({
         loading: false,
-        error: error instanceof Error ? error.message : '更新设备状态失败',
-      }));
+        error: error instanceof Error ? error.message : '更新设备状态失败'
+      });
       throw error;
     }
-  }, []);
+  },
 
-  // 设置选中设备
-  const setSelectedEquipment = useCallback((equipment: Equipment | null) => {
-    setState(prev => ({ ...prev, selectedEquipment: equipment }));
-  }, []);
+  fetchMonitoringPoints: async (equipmentId) => {
+    set({ loading: true, error: null });
+    try {
+      // 调用后端 API：equipmentControllerGetMonitoringPoints
+      // 默认获取第一页，每页100条（足够覆盖单个设备的监测点）
+      const response = await Service.equipmentControllerGetMonitoringPoints(
+        equipmentId,
+        1,
+        100
+      );
 
-  // 设置分页
-  const setPage = useCallback((page: number) => {
-    setState(prev => ({ ...prev, page }));
-  }, []);
+      // 兼容处理可能的 .data 包装
+      const result = (response as any).data || response;
+      const items = (result.items as MonitoringPoint[]) || [];
 
-  // 设置页面大小
-  const setPageSize = useCallback((pageSize: number) => {
-    setState(prev => ({ ...prev, pageSize, page: 1 }));
-  }, []);
+      set({
+        monitoringPoints: items,
+        loading: false,
+        error: null
+      });
+      return items;
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : '获取监测点列表失败';
+      console.error('获取监测点列表失败:', error);
 
-  // 设置筛选条件
-  const setFilters = useCallback((filters: EquipmentFilters) => {
-    setState(prev => ({ ...prev, filters, page: 1 }));
-  }, []);
+      set({
+        monitoringPoints: [],
+        loading: false,
+        error: errorMessage
+      });
+      throw error;
+    }
+  },
 
-  // 清除错误
-  const clearError = useCallback(() => {
-    setState(prev => ({ ...prev, error: null }));
-  }, []);
+  setSelectedEquipment: (equipment) => {
+    set({ selectedEquipment: equipment });
+  },
 
-  return {
-    // 状态
-    ...state,
-    
-    // 方法
-    fetchEquipmentList,
-    fetchEquipmentDetail,
-    createEquipment,
-    updateEquipment,
-    deleteEquipment,
-    restoreEquipment,
-    fetchEquipmentOverview,
-    updateEquipmentStatus,
-    setSelectedEquipment,
-    setPage,
-    setPageSize,
-    setFilters,
-    clearError,
-  };
-};
+  // 标准CRUD方法：设置选中项（别名）
+  setSelectedItem: (item) => {
+    get().setSelectedEquipment(item);
+  },
 
-// 导出便捷Hook
-export const useEquipment = () => {
-  const store = useEquipmentStore();
-  return {
-    ...store,
-    // 便捷方法
-    equipmentList: store.items,
-    selectedEquipmentData: store.selectedEquipment,
-    isLoading: store.loading,
-    error: store.error,
-    totalCount: store.total,
-    currentPage: store.page,
-    pageSize: store.pageSize,
-    totalPages: store.totalPages,
-    equipmentOverview: store.overview,
-    filters: store.filters,
-  };
-};
+  setPage: (page) => {
+    set({ page });
+    get().fetchEquipmentList();
+  },
+
+  setPageSize: (pageSize) => {
+    set({ pageSize, page: 1 });
+    get().fetchEquipmentList();
+  },
+
+  setFilters: (filters, merge = false) => {
+    const newFilters = merge ? { ...get().filters, ...filters } : filters;
+    set({ filters: newFilters, page: 1 });
+    get().fetchEquipmentList();
+  },
+
+  // 标准CRUD方法：设置排序配置
+  setSort: (sortBy, sortOrder) => {
+    set({ sortBy, sortOrder });
+    get().fetchEquipmentList();
+  },
+
+  clearError: () => {
+    set({ error: null });
+  },
+
+  // 标准CRUD方法：重置Store
+  reset: () => {
+    set({
+      items: [],
+      selectedEquipment: null,
+      loading: false,
+      error: null,
+      total: 0,
+      page: 1,
+      pageSize: 20,
+      totalPages: 0,
+      filters: {},
+      sortBy: undefined,
+      sortOrder: undefined,
+      overview: null,
+      monitoringPoints: [],
+    });
+  },
+}));
+
+// ==========================================
+// Selectors
+// ==========================================
+export const selectEquipmentList = (state: EquipmentStore) => state.items;
+export const selectSelectedEquipment = (state: EquipmentStore) => state.selectedEquipment;
+export const selectEquipmentLoading = (state: EquipmentStore) => state.loading;
+export const selectEquipmentError = (state: EquipmentStore) => state.error;
+export const selectMonitoringPoints = (state: EquipmentStore) => state.monitoringPoints;
+
+// ==========================================
+// 导出后端类型供其他模块使用
+// ==========================================
+export { Equipment, MonitoringPoint };
+export type { CreateEquipmentDto, UpdateEquipmentDto };

@@ -1,0 +1,16 @@
+<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- 容器 -->
+  <path d="M6 18 L6 10 Q6 8 8 8 L16 8 Q18 8 18 10 L18 18 L6 18" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <!-- 水位线 -->
+  <path d="M7 14 Q9 12 11 14 Q13 16 15 14 Q17 12 18 14" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <path d="M7 15 Q9 13 11 15 Q13 17 15 15 Q17 13 18 15" stroke="currentColor" stroke-width="1.5" fill="none"/>
+  <!-- 水位填充 -->
+  <rect x="6" y="14" width="12" height="4" fill="currentColor" opacity="0.2"/>
+  <!-- 刻度 -->
+  <line x1="19" y1="10" x2="20" y2="10" stroke="currentColor" stroke-width="1"/>
+  <line x1="19" y1="14" x2="21" y2="14" stroke="currentColor" stroke-width="1.5"/>
+  <line x1="19" y1="18" x2="20" y2="18" stroke="currentColor" stroke-width="1"/>
+  <!-- 传感器 -->
+  <circle cx="12" cy="5" r="1.5" fill="currentColor"/>
+  <line x1="12" y1="6.5" x2="12" y2="8" stroke="currentColor" stroke-width="1"/>
+</svg>

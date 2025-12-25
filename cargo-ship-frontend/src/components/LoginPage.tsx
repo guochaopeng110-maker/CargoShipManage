@@ -20,16 +20,16 @@
  */
 
 // React核心库
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 
 // 第三方图标库
-import { 
-  Ship, 
-  Eye, 
-  EyeOff, 
-  Lock, 
-  User, 
-  AlertCircle, 
+import {
+  Ship,
+  Eye,
+  EyeOff,
+  Lock,
+  User,
+  AlertCircle,
   Loader2
 } from 'lucide-react';
 
@@ -40,8 +40,9 @@ import { Label } from './ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/card';
 import { Alert, AlertDescription } from './ui/alert';
 
-// 导入认证状态管理
-import { useAuth } from '../stores/auth-store';
+// 导入认证状态管理（直接使用 useAuthStore）
+import { useAuthStore } from '../stores/auth-store';
+import { realtimeService } from '../services/realtime-service';
 
 /**
  * 登录页面组件的属性接口
@@ -63,13 +64,13 @@ interface LoginFormData {
 /**
  * 登录页面组件
  */
-export function LoginPage({ 
-  onLoginSuccess, 
+export function LoginPage({
+  onLoginSuccess,
   onNavigateToRegister,
   onNavigateToResetPassword
 }: LoginPageProps) {
-  // 认证状态管理
-  const { login, loading, error, clearError } = useAuth();
+  // 认证状态管理（直接使用 useAuthStore，避免不必要的包装层）
+  const { login, loading, error, clearError } = useAuthStore();
 
   // 表单状态管理
   const [formData, setFormData] = useState<LoginFormData>({
@@ -81,12 +82,17 @@ export function LoginPage({
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 防御性处理：进入登录页时，确保之前的 WebSocket 连接已彻底断开
+  useEffect(() => {
+    realtimeService.disconnect();
+  }, []);
+
   /**
    * 表单字段变更处理
    */
   const handleInputChange = (field: keyof LoginFormData, value: string) => {
     setFormData(prev => ({ ...prev, [field]: value }));
-    
+
     // 清除错误信息
     if (error) {
       clearError();
@@ -111,15 +117,15 @@ export function LoginPage({
    */
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     // 表单验证
     const validationError = validateForm();
     if (validationError) {
       return;
     }
-    
+
     setIsSubmitting(true);
-    
+
     try {
       await login(formData.username, formData.password);
       onLoginSuccess();
@@ -230,16 +236,6 @@ export function LoginPage({
 
             {/* 导航链接 */}
             <div className="space-y-2 text-center text-sm">
-              {onNavigateToResetPassword && (
-                <button
-                  type="button"
-                  onClick={onNavigateToResetPassword}
-                  className="text-cyan-400 hover:text-cyan-300 transition-colors"
-                  disabled={loading || isSubmitting}
-                >
-                  忘记密码？
-                </button>
-              )}
               <div>
                 <span className="text-slate-400">还没有账号？</span>
                 <button
