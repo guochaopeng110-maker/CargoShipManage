@@ -121,17 +121,17 @@ interface GaugeChartProps {
 const TrendIndicator = ({ trend }: { trend: 'up' | 'down' | 'stable' }) => {
   // 趋势状态配置映射
   const config = {
-    up: { 
+    up: {
       icon: TrendingUp,           // 上升趋势图标
       color: 'text-green-400',    // 绿色文字
       bg: 'bg-green-500/20'       // 绿色背景
     },
-    down: { 
+    down: {
       icon: TrendingDown,         // 下降趋势图标
       color: 'text-red-400',      // 红色文字
       bg: 'bg-red-500/20'         // 红色背景
     },
-    stable: { 
+    stable: {
       icon: Minus,                // 稳定状态图标
       color: 'text-slate-400',    // 灰色文字
       bg: 'bg-slate-500/20'       // 灰色背景
@@ -170,15 +170,17 @@ const TrendIndicator = ({ trend }: { trend: 'up' | 'down' | 'stable' }) => {
  * @param thresholds 阈值配置
  * @param maxValue 最大值
  */
-const ThresholdLines = ({ 
-  thresholds, 
-  maxValue 
-}: { 
-  thresholds?: GaugeChartProps['thresholds']; 
+const ThresholdLines = ({
+  thresholds,
+  maxValue,
+  type
+}: {
+  thresholds?: GaugeChartProps['thresholds'];
   maxValue: number;
+  type?: GaugeChartProps['type'];
 }) => {
-  // 如果不显示阈值线，直接返回null
-  if (!thresholds?.showLines) return null;
+  // 如果不显示阈值线，或非线性图表，直接返回null
+  if (!thresholds?.showLines || type !== 'linear') return null;
 
   return (
     <div className="absolute inset-0 pointer-events-none">
@@ -218,19 +220,19 @@ const ThresholdLines = ({
 const StatusIndicator = ({ status }: { status: 'normal' | 'warning' | 'critical' }) => {
   // 状态配置映射
   const config = {
-    normal: { 
+    normal: {
       icon: CheckCircle,           // 正常状态图标
       color: 'text-green-400',    // 绿色文字
       bg: 'bg-green-500/20',      // 绿色背景
       label: '正常'                // 状态标签
     },
-    warning: { 
+    warning: {
       icon: AlertTriangle,        // 警告状态图标
       color: 'text-yellow-400',   // 黄色文字
       bg: 'bg-yellow-500/20',     // 黄色背景
       label: '警告'                // 状态标签
     },
-    critical: { 
+    critical: {
       icon: Zap,                  // 严重状态图标
       color: 'text-red-400',      // 红色文字
       bg: 'bg-red-500/20',        // 红色背景
@@ -276,7 +278,7 @@ const StatusIndicator = ({ status }: { status: 'normal' | 'warning' | 'critical'
  * 
  * @param props 仪表盘属性配置
  */
-export function GaugeChart({ 
+export function GaugeChart({
   value,                // 当前数值
   maxValue,             // 最大值
   minValue = 0,         // 最小值（默认0）
@@ -295,7 +297,7 @@ export function GaugeChart({
 }: GaugeChartProps) {
   // 使用统一监测数据状态管理
   const { realtimeConnected } = useMonitoringStore();
-  
+
   // 显示数值状态（用于动画效果）
   const [displayValue, setDisplayValue] = useState(value);
   // 前一个数值状态（用于变化检测）
@@ -335,17 +337,17 @@ export function GaugeChart({
    * - large: 大尺寸，160x160px，文字较大
    */
   const sizeClasses = {
-    small: { 
+    small: {
       container: 'w-24 h-24',   // 容器尺寸：24x24 (96x96px)
       svg: 'text-sm',           // SVG文字小
       value: 'text-xs'          // 数值文字很小
     },
-    medium: { 
+    medium: {
       container: 'w-32 h-32',  // 容器尺寸：32x32 (128x128px)
       svg: 'text-base',         // SVG文字中等
       value: 'text-sm'          // 数值文字小
     },
-    large: { 
+    large: {
       container: 'w-40 h-40',  // 容器尺寸：40x40 (160x160px)
       svg: 'text-lg',           // SVG文字大
       value: 'text-base'        // 数值文字中等
@@ -363,17 +365,17 @@ export function GaugeChart({
    * - critical: 严重状态，红色主题
    */
   const statusColors = {
-    normal: { 
+    normal: {
       text: 'text-green-400',    // 文字绿色
       stroke: 'stroke-green-400', // 描边绿色
       bg: 'bg-green-500/20'      // 背景绿色
     },
-    warning: { 
+    warning: {
       text: 'text-amber-400',    // 文字琥珀色
       stroke: 'stroke-amber-400', // 描边琥珀色
       bg: 'bg-amber-500/20'      // 背景琥珀色
     },
-    critical: { 
+    critical: {
       text: 'text-red-400',      // 文字红色
       stroke: 'stroke-red-400',   // 描边红色
       bg: 'bg-red-500/20'        // 背景红色
@@ -401,14 +403,14 @@ export function GaugeChart({
           const diff = value - prev;              // 计算差值
           const step = diff * 0.1;               // 每次移动10%
           const newValue = prev + step;          // 新数值
-          
+
           // 如果接近目标值，停止动画
           if (Math.abs(diff) < 0.1) {
             clearInterval(interval);
             onValueChange?.(value);              // 触发数值变化回调
             return value;
           }
-          
+
           return newValue;
         });
       }, 50); // 每50ms更新一次
@@ -510,11 +512,11 @@ export function GaugeChart({
    */
   const currentTrend = React.useMemo(() => {
     if (realtimeData.length < 2) return 'stable';
-    
+
     const latest = realtimeData[realtimeData.length - 1];
     const previous = realtimeData[realtimeData.length - 2];
     const diff = latest.value - previous.value;
-    
+
     if (Math.abs(diff) < 0.1) return 'stable';
     return diff > 0 ? 'up' : 'down';
   }, [realtimeData]);
@@ -534,12 +536,12 @@ export function GaugeChart({
    */
   const statistics = React.useMemo(() => {
     if (!showStatistics || realtimeData.length === 0) return null;
-    
+
     const values = realtimeData.map(d => d.value);
     const avg = values.reduce((sum, val) => sum + val, 0) / values.length;
     const min = Math.min(...values);
     const max = Math.max(...values);
-    
+
     return { avg, min, max, count: values.length };
   }, [realtimeData, showStatistics]);
 
@@ -554,22 +556,21 @@ export function GaugeChart({
   };
 
   return (
-    <Card className={`bg-slate-800/80 border border-slate-700 rounded-lg p-6 ${
-      isFullscreen ? 'fixed inset-4 z-50 bg-slate-900' : ''
-    }`}>
+    <Card className={`bg-slate-800/80 border border-slate-700 rounded-lg p-6 ${isFullscreen ? 'fixed inset-4 z-50 bg-slate-900' : ''
+      }`}>
       {/* 标题和控制栏 */}
       <div className="flex items-center justify-between mb-4">
         {/* 仪表盘标题 */}
         <h3 className="text-slate-100 text-lg font-semibold">{label}</h3>
-        
+
         {/* 右侧控制组件 */}
         <div className="flex items-center gap-2">
           {/* 状态指示器 */}
           <StatusIndicator status={currentStatus} />
-          
+
           {/* 趋势指示器（可选） */}
           {showTrend && <TrendIndicator trend={currentTrend} />}
-          
+
           {/* 全屏切换按钮 */}
           <Button
             onClick={toggleFullscreen}
@@ -595,7 +596,7 @@ export function GaugeChart({
               strokeWidth="8"
               strokeLinecap="round"
             />
-            
+
             {/* 数值弧线 */}
             <path
               d={getPath()}
@@ -606,10 +607,10 @@ export function GaugeChart({
               strokeDasharray={type === 'linear' ? `${percentage * 0.8} 80` : `${percentage * 1.26} 126`}
               style={{ transition: animated ? 'stroke-dasharray 0.5s ease-in-out' : 'none' }}
             />
-            
-            {/* 阈值线 */}
-            <ThresholdLines thresholds={thresholds} maxValue={maxValue} />
-            
+
+            {/* 阈值线 - 移出SVG以修复渲染问题 */}
+            {/* moved out of svg */}
+
             {/* 中心圆形 */}
             <circle
               cx="50"
@@ -620,7 +621,10 @@ export function GaugeChart({
               style={{ transformOrigin: 'center' }}
             />
           </svg>
-          
+
+          {/* 阈值线 */}
+          <ThresholdLines thresholds={thresholds} maxValue={maxValue} type={type} />
+
           {/* 数值显示区域 */}
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             {/* 当前数值 */}

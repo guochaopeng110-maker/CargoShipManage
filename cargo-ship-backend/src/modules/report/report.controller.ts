@@ -42,6 +42,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { ErrorResponseDto } from '../../common/dto';
+import * as fs from 'fs';
 
 @ApiTags('健康报告')
 @ApiExtraModels(HealthReport) // ✅ 显式注册 HealthReport 到 Swagger schemas
@@ -363,6 +364,8 @@ export class ReportController {
     }
 
     const buffer = await this.exportService.exportReportToExcel(report);
+    console.log('Exported buffer length:', buffer.length);
+    fs.writeFileSync('exported_report2.xlsx', buffer);
 
     const filename = `健康报告_${report.equipmentId || '汇总'}_${new Date().getTime()}.xlsx`;
     res.setHeader(

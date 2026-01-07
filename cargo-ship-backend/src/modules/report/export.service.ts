@@ -26,7 +26,6 @@ export class ExportService {
     workbook.creator = 'Cargo Ships Management System';
     workbook.created = new Date();
     workbook.modified = new Date();
-
     // 创建工作表
     const worksheet = workbook.addWorksheet('健康评估报告', {
       properties: { tabColor: { argb: 'FF00FF00' } },
@@ -85,7 +84,7 @@ export class ExportService {
     this.addInfoRow(
       worksheet,
       '报告生成时间',
-      this.formatTimestamp(report.generatedAt),
+      new Date().toLocaleString('zh-CN'),
     );
     this.addInfoRow(worksheet, '生成人', report.generatedBy);
 
@@ -128,7 +127,7 @@ export class ExportService {
 
     // 添加空行
     worksheet.addRow([]);
-
+    /*
     // 添加运行时间统计区域标题
     if (report.uptimeStats) {
       const uptimeTitle = worksheet.addRow(['运行时间统计']);
@@ -164,7 +163,7 @@ export class ExportService {
       this.addInfoRow(
         worksheet,
         '运行率',
-        `${report.uptimeStats.uptimeRate.toFixed(2)}%`,
+        `${report.uptimeStats.uptimeRate?.toFixed(2)}%`,
       );
 
       // 添加空行
@@ -235,7 +234,7 @@ export class ExportService {
         });
       }
     }
-
+*/
     // 添加页脚
     worksheet.addRow([]);
     const footerRow = worksheet.addRow([
@@ -280,8 +279,13 @@ export class ExportService {
    * @param timestamp 时间戳（毫秒）
    * @returns 格式化后的时间字符串
    */
-  private formatTimestamp(timestamp: number): string {
-    return new Date(timestamp).toLocaleString('zh-CN', {
+  // Updated to safely handle string timestamps
+  private formatTimestamp(timestamp: number | string | undefined): string {
+    const ts = Number(timestamp);
+    if (isNaN(ts)) return '-';
+    const d = new Date(ts);
+    if (isNaN(d.getTime())) return '-';
+    return d.toLocaleString('zh-CN', {
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',

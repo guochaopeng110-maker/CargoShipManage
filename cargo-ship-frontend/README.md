@@ -1,11 +1,133 @@
+# 货船智能机舱管理系统 - 前端
 
-  # 货船智能机舱管理系统
+基于 **React**、**Vite** 和 **TypeScript** 构建的现代化船舶机舱监控管理平台前端应用。本项目专注于提供直观的数据可视化、实时的状态监控和高效的告警处理体验。
 
-  This is a code bundle for 货船智能机舱管理系统. The original project is available at https://www.figma.com/design/v3u0oRUaVF8xhFR2Tq2SzQ/%E8%B4%A7%E8%88%B9%E6%99%BA%E8%83%BD%E6%9C%BA%E8%88%B1%E7%AE%A1%E7%90%86%E7%B3%BB%E7%BB%9F.
+## ✨ 核心特性
 
-  ## Running the code
+- **驾驶舱总览**: 
+    - 全船 8 大子系统健康状态矩阵 (正常/警告/故障)。
+    - 实时 SOH (State of Health) 评分展示。
+    - 关键告警轮播通知。
+- **实时监控中心**:
+    - **可视化图表**: 集成 Recharts/ECharts 展示电压、电流、温度等时序数据趋势。
+    - **WebSocket 联动**: 毫秒级接收后端推送的最新监测值 (`monitoring:new-data`)。
+- **智能告警中心**:
+    - 实时告警列表与声光提示。
+    - 告警确认 (Acknowledge) 与消音操作。
+    - 历史告警查询与多维度筛选。
+- **设备管理**:
+    - 完整的设备台账查阅。
+    - 设备详情页与生命周期状态追踪。
+- **报表与分析**:
+    - 按需导出监测数据 (Excel/CSV)。
+    - 查看与下载设备健康评估报告。
+- **系统管理**:
+    - 用户与角色权限管理 (RBAC)。
+    - 个人中心与安全设置。
 
-  Run `npm i` to install the dependencies.
+## 🛠 技术栈
 
-  Run `npm run dev` to start the development server.
-  
+- **Core**: React 18, TypeScript 5.x
+- **Build Tool**: Vite 6.x
+- **State Management**: Zustand
+- **UI Components**: 
+    - Tailwind CSS (Styling)
+    - Radix UI (Headless Primitives)
+    - Lucide React (Icons)
+    - Sonner (Toast Notifications)
+- **Data Visualization**: Recharts
+- **Networking**: 
+    - Fetch API (REST)
+    - Socket.io-client (Realtime)
+- **Routing**: React Router v7
+
+## 🚀 快速开始
+
+### 1. 环境准备
+
+- Node.js (v18+)
+- npm 或 pnpm
+
+### 2. 安装依赖
+
+```bash
+# 克隆仓库
+git clone <repository-url>
+cd cargo-ship-frontend
+
+# 安装依赖
+npm install
+```
+
+### 3. 配置环境变量
+
+复制并重命名环境变量文件（如无 `.env.example` 可直接创建 `.env`）：
+
+```ini
+# API 基础路径
+VITE_API_BASE_URL=http://localhost:3000/api
+
+# WebSocket 地址
+VITE_WS_URL=ws://localhost:3000
+```
+
+### 4. 启动开发服务器
+
+```bash
+npm run dev
+```
+
+服务启动后，访问浏览器: `http://localhost:5173`
+
+### 5. 构建生产版本
+
+```bash
+npm run build
+```
+
+构建产物将输出到 `dist/` 目录。
+
+## 📂 项目结构
+
+```
+src/
+├── assets/             # 静态资源 (图片, 字体)
+├── components/         # 公共组件 (Button, Card, Layout)
+├── config/             # 全局配置 (Navigation, Constants)
+├── hooks/              # 自定义 Hooks
+├── pages/              # 页面组件
+│   ├── dashboard/      # 驾驶舱
+│   ├── monitoring/     # 实时监控
+│   ├── alarm/          # 告警中心
+│   └── ...
+├── services/           # API 服务层
+│   ├── api/            # 自动生成的 API Client
+│   └── realtime/       # WebSocket 服务
+├── stores/             # Zustand 状态管理
+├── types/              # TypeScript 类型定义
+├── utils/              # 工具函数
+├── App.tsx             # 根组件 (路由配置)
+└── main.tsx            # 入口文件
+```
+
+## 🧩 开发指南
+
+### API 客户端生成
+
+本项目使用 `openapi-typescript-codegen` 根据后端 Swagger JSON 自动生成 API 客户端代码。
+
+```bash
+# 1. 确保后端服务已启动 (http://localhost:3000)
+# 2. 运行生成脚本
+npm run generate:api
+```
+
+### 新增页面
+
+1. 在 `src/pages/` 下创建新的页面组件。
+2. 在 `src/config/navigation.ts` 中配置路由和菜单项。
+3. （可选）在 `src/stores/` 中创建对应的状态管理 Store。
+
+## 📝 许可证
+
+UNLICENSED - 私有项目

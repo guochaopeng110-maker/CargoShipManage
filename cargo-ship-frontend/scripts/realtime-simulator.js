@@ -307,12 +307,13 @@ if (args.includes('--batch')) {
         const ids = Object.keys(SYSTEM_DEFINITIONS);
         sendBatchSimulation(ids[Math.floor(Math.random() * ids.length)], 3, false);
     }, 15000);
-
-    // 历史导入每30秒一次
-    setInterval(() => {
-        const ids = Object.keys(SYSTEM_DEFINITIONS);
-        sendBatchSimulation(ids[Math.floor(Math.random() * ids.length)], 8, true);
-    }, 30000);
+    /*
+        // 历史导入每30秒一次
+        setInterval(() => {
+            const ids = Object.keys(SYSTEM_DEFINITIONS);
+            sendBatchSimulation(ids[Math.floor(Math.random() * ids.length)], 8, true);
+        }, 30000);
+    */
 }
 
 httpServer.listen(PORT, () => console.log(`[模拟器] 启动完成: http://localhost:${PORT}`));

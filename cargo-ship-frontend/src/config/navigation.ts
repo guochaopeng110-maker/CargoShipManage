@@ -130,10 +130,10 @@ export interface NavItem {
  *     不进行数据交互和复杂逻辑实现，以保持导航结构的完整性。
  */
 export const navigationConfig: NavItem[] = [
-  // ========== 1. 驾控台 ==========
+  // ========== 1. 集控台 ==========
   {
     id: 'dashboard',
-    label: '驾控台',
+    label: '集控台',
     icon: LayoutDashboard,
     path: '/dashboard',
     description: '全局态势总览，聚合显示核心实时状态和告警摘要',
@@ -181,22 +181,22 @@ export const navigationConfig: NavItem[] = [
         path: '/auxiliary',
         description: '辅助设备和支持系统监测',
       },
+
+      {
+        id: 'alarm-center',
+        label: '告警中心',
+        icon: AlertCircle,
+        path: '/alarm-center', // 更新为新版告警中心（双模视图）
+        description: '统一管理实时告警和历史告警，实时监控系统健康状态',
+      },
     ],
   },
 
-  // ========== 3. 告警中心（独立一级菜单）==========
-  {
-    id: 'alarm-center',
-    label: '告警中心',
-    icon: AlertCircle,
-    path: '/alarm-center', // 更新为新版告警中心（双模视图）
-    description: '统一管理实时告警和历史告警，实时监控系统健康状态',
-  },
 
-  // ========== 4. 数据中心（菜单组）==========
+  // ========== 3. 数据管理（菜单组）==========
   {
     id: 'data-hub',
-    label: '数据中心',
+    label: '数据管理',
     icon: Database,
     description: '历史数据管理和查询',
     children: [
@@ -217,16 +217,7 @@ export const navigationConfig: NavItem[] = [
     ],
   },
 
-  // ========== 5. 健康评估（独立一级菜单）==========
-  {
-    id: 'health',
-    label: '健康评估',
-    icon: Activity,
-    path: '/health',
-    description: '设备健康状态评估和趋势分析',
-  },
-
-  // ========== 6. 视情维护（菜单组 - 仅UI骨架）==========
+  // ========== 4. 视情维护（菜单组 - 仅UI骨架）==========
   {
     id: 'maintenance',
     label: '视情维护',
@@ -252,7 +243,7 @@ export const navigationConfig: NavItem[] = [
     ],
   },
 
-  // ========== 7. 辅助决策（菜单组 - 仅UI骨架）==========
+  // ========== 5. 辅助决策（菜单组 - 仅UI骨架）==========
   {
     id: 'decision-support',
     label: '辅助决策',
@@ -286,7 +277,16 @@ export const navigationConfig: NavItem[] = [
     ],
   },
 
-  // ========== 8. 系统管理（菜单组）==========
+  // ========== 6. 健康评估（独立一级菜单）==========
+  {
+    id: 'health',
+    label: '健康评估',
+    icon: Activity,
+    path: '/health',
+    description: '设备健康状态评估和趋势分析',
+  },
+
+  // ========== 7. 系统管理（菜单组）==========
   {
     id: 'system-admin',
     label: '系统管理',

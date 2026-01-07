@@ -2,7 +2,6 @@
 /* istanbul ignore file */
 /* tslint:disable */
 /* eslint-disable */
-import { toast } from 'sonner';
 import { ApiError } from './ApiError';
 import type { ApiRequestOptions } from './ApiRequestOptions';
 import type { ApiResult } from './ApiResult';
@@ -264,14 +263,6 @@ export const catchErrorCodes = (options: ApiRequestOptions, result: ApiResult): 
 
     const error = errors[result.status];
     if (error) {
-        // 全局处理权限不足 (403 Forbidden)
-        if (result.status === 403) {
-            toast.error('权限不足', {
-                description: '您没有权限执行此操作，请联系系统管理员。',
-                duration: 4000,
-            });
-        }
-
         throw new ApiError(options, result, error);
     }
 
